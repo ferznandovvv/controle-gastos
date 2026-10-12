@@ -1,18 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Só o casal lê e escreve. Mantenha igual à lista em public/firebase-config.js.
-    function doCasal() {
+    // Só estas contas leem e escrevem. Mantenha igual à lista em public/firebase-config.js.
+    function permitido() {
       return request.auth != null
         && request.auth.token.email_verified == true
         && request.auth.token.email in [
-          'fernandomendoncacintra@gmail.com',
-          'EMAIL_DA_ESPOSA@gmail.com'
+          'fernandomendoncacintra@gmail.com'
+          // , 'EMAIL_DA_ESPOSA@gmail.com'
         ];
     }
 
     match /{document=**} {
-      allow read, write: if doCasal();
+      allow read, write: if permitido();
     }
   }
 }

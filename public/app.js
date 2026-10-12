@@ -34,7 +34,7 @@ const estado = {
 const $ = (s) => document.querySelector(s);
 const brl = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const pad = (n) => String(n).padStart(2, '0');
+function pad(n) { return String(n).padStart(2, '0'); }
 
 function mesAtual() {
   const d = new Date();
