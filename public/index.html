@@ -93,7 +93,7 @@
           <div><small>Gastos fixos por mês</small><b id="fixo-gastos" class="neg"></b></div>
           <div class="so-receitas"><small>Sobra</small><b id="fixo-sobra"></b></div>
         </div>
-        <p class="ajuda">Aluguel, contas, escola e assinaturas. Eles entram sozinhos nos lançamentos de cada mês, no dia marcado.</p>
+        <p class="ajuda">Gastos que se repetem todo mês (aluguel, luz, escola) ou toda semana (feira, diarista). Eles entram sozinhos nos lançamentos no dia marcado.</p>
         <div id="lista-fixos"></div>
       </section>
 
@@ -181,12 +181,21 @@
         </div>
       </div>
 
-      <div class="campo" id="campo-dia">
-        <span class="campo-rotulo">Todo dia</span>
-        <input name="dia" type="number" min="1" max="31" class="input dia">
+      <div class="campo" id="campo-repetir">
+        <span class="campo-rotulo">Repetir</span>
+        <div id="chips-repetir" class="chips"></div>
       </div>
 
-      <label class="toggle" id="campo-repetir"><span>Repetir todo mês</span><input type="checkbox" name="repetir"><i></i></label>
+      <div class="campo" id="campo-freq">
+        <span class="campo-rotulo">Repete</span>
+        <div id="chips-freq" class="chips">
+          <button type="button" class="chip" data-freq="mensal">Todo mês</button>
+          <button type="button" class="chip" data-freq="semanal">Toda semana</button>
+        </div>
+        <label id="campo-dia" class="linha-dia">no dia <input name="dia" type="number" min="1" max="31" class="input dia"> de cada mês</label>
+        <div id="campo-semana" class="semana"></div>
+      </div>
+
       <label class="toggle" id="campo-ativo"><span>Ativo</span><input type="checkbox" name="ativo"><i></i></label>
       <p id="aviso" class="ajuda"></p>
 

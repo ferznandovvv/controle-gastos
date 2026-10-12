@@ -73,6 +73,12 @@ function nomeMes(mes, opts = { month: 'long', year: 'numeric' }) {
   const [a, m] = mes.split('-').map(Number);
   return new Date(a, m - 1, 1).toLocaleDateString('pt-BR', opts).replace(' de ', ' ');
 }
+const DIAS_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+function diaDaSemana(data) { return new Date(`${data}T12:00`).getDay(); }
+function rotuloSemana(dow) { return `${dow === 0 || dow === 6 ? 'Todo' : 'Toda'} ${DIAS_SEMANA[dow]}`; }
+function rotuloRepeticao(f) { return f.frequencia === 'semanal' ? rotuloSemana(f.diaSemana) : `Todo dia ${f.dia}`; }
+// Quanto o fixo pesa por mês (semanais ≈ 52 semanas / 12 meses).
+function valorMensal(f) { return f.frequencia === 'semanal' ? (f.valor * 52) / 12 : f.valor; }
 function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 function parseValor(s) {
   s = String(s).trim().replace(/[R$\s]/g, '');
@@ -215,19 +221,35 @@ function assinarLancamentos() {
   });
 }
 
+// Datas em que um fixo cai no mês. Mensais entram uma vez por mês (chave = mês);
+// semanais entram só quando o dia chega (chave = data), a partir de quando foram criados.
+function ocorrencias(f, mes) {
+  if (f.frequencia !== 'semanal') return [{ chave: mes, data: `${mes}-${pad(Math.min(f.dia, diasNoMes(mes)))}` }];
+  const limite = mes === mesAtual() ? hoje() : `${mes}-${pad(diasNoMes(mes))}`;
+  const r = [];
+  for (let d = 1; d <= diasNoMes(mes); d++) {
+    const data = `${mes}-${pad(d)}`;
+    if (data <= limite && data >= (f.inicioData || '') && diaDaSemana(data) === f.diaSemana) r.push({ chave: data, data });
+  }
+  return r;
+}
+
 // Cria, para o mês em exibição, os lançamentos dos fixos que ainda não foram gerados.
 async function gerarFixos() {
   const mes = estado.mes;
   if (mes > mesAtual()) return;
   for (const f of estado.fixos) {
-    if (f.ativo === false || mes < f.inicio || (f.gerados || []).includes(mes)) continue;
+    if (f.ativo === false || mes < f.inicio) continue;
+    const novas = ocorrencias(f, mes).filter((o) => !(f.gerados || []).includes(o.chave));
+    if (!novas.length) continue;
     const b = writeBatch(db);
-    b.set(doc(db, 'lancamentos', `${f.id}_${mes}`), {
-      tipo: f.tipo, valor: f.valor, categoria: f.categoria, descricao: f.descricao || '', quem: f.quem,
-      data: `${mes}-${pad(Math.min(f.dia, diasNoMes(mes)))}`, mes, fixoId: f.id,
-      criadoPor: 'automático', criadoEm: serverTimestamp(),
-    });
-    b.update(doc(db, 'fixos', f.id), { gerados: arrayUnion(mes) });
+    for (const o of novas) {
+      b.set(doc(db, 'lancamentos', `${f.id}_${o.chave}`), {
+        tipo: f.tipo, valor: f.valor, categoria: f.categoria, descricao: f.descricao || '', quem: f.quem || '',
+        data: o.data, mes, fixoId: f.id, criadoPor: 'automático', criadoEm: serverTimestamp(),
+      });
+    }
+    b.update(doc(db, 'fixos', f.id), { gerados: arrayUnion(...novas.map((o) => o.chave)) });
     await b.commit();
   }
 }
@@ -250,7 +272,7 @@ $('#mes-ant').onclick = () => irParaMes(somaMes(estado.mes, -1));
 $('#mes-prox').onclick = () => irParaMes(somaMes(estado.mes, 1));
 $('#mes-titulo').onclick = () => irParaMes(mesAtual());
 
-const TITULOS = { fixos: 'Fixos mensais', ajustes: 'Ajustes' };
+const TITULOS = { fixos: 'Gastos fixos', ajustes: 'Ajustes' };
 function irPara(aba) {
   estado.aba = aba;
   document.querySelectorAll('.tabbar button').forEach((x) => x.classList.toggle('ativo', x.dataset.aba === aba));
@@ -474,21 +496,23 @@ function abrirItemDaLista(e) {
 function renderFixos() {
   if (!estado.user) return;
   const ativos = estado.fixos.filter((f) => f.ativo !== false);
-  const t = totais(ativos);
+  const t = totais(ativos.map((f) => ({ ...f, valor: valorMensal(f) })));
+  const aprox = ativos.some((f) => f.frequencia === 'semanal') ? '≈ ' : '';
   $('#fixo-receitas').textContent = brl(t.receitas);
-  $('#fixo-gastos').textContent = brl(t.gastos);
+  $('#fixo-gastos').textContent = aprox + brl(t.gastos);
   $('#fixo-sobra').textContent = brl(t.receitas - t.gastos);
   $('#fixo-sobra').className = t.receitas - t.gastos < 0 ? 'neg' : '';
 
   const grupo = (tipo, titulo) => {
-    const itens = estado.fixos.filter((f) => f.tipo === tipo).sort((a, b) => a.dia - b.dia);
+    const ordem = (f) => (f.frequencia === 'semanal' ? 100 + ((f.diaSemana + 6) % 7) : f.dia);
+    const itens = estado.fixos.filter((f) => f.tipo === tipo).sort((a, b) => ordem(a) - ordem(b));
     if (!itens.length) return '';
     return `${titulo ? `<div class="dia-cab"><span>${titulo}</span></div>` : ''}<ul class="itens">${itens.map((f) => {
       const receita = f.tipo === 'receita';
       return `<li><button class="item ${f.ativo === false ? 'inativo' : ''}" data-id="${f.id}">
         <span class="avatar" style="--c:${receita ? '#059669' : corCategoria(f.categoria)}">${emoji(f.categoria)}</span>
         <span class="info"><span class="titulo">${esc(f.descricao || f.categoria)}</span>
-          <small>Todo dia ${f.dia} · ${detalhes(f.categoria, f.quem)}${f.ativo === false ? ' · pausado' : ''}</small></span>
+          <small>${rotuloRepeticao(f)} · ${detalhes(f.categoria, f.quem)}${f.ativo === false ? ' · pausado' : ''}</small></span>
         <span class="valor ${receita ? 'pos' : ''}">${sinal(f)}${brl(f.valor)}</span>
       </button></li>`;
     }).join('')}</ul>`;
@@ -557,7 +581,8 @@ const sheet = $('#sheet');
 const form = $('#form-item');
 const inpValor = $('#valor');
 let edicao = null;
-const sel = { tipo: 'gasto', categoria: '', quem: '', centavos: 0 };
+// rep: repetição escolhida ao lançar ('' | 'semanal' | 'mensal'); freq/dow: frequência de um fixo.
+const sel = { tipo: 'gasto', categoria: '', quem: '', centavos: 0, rep: '', freq: 'mensal', dow: 5 };
 
 function pessoaPadrao() {
   const ultima = lerLocal('ultimaPessoa');
@@ -576,19 +601,21 @@ function abrirSheet(modo, item) {
   form.descricao.value = item?.descricao || '';
   form.data.value = item?.data || (estado.mes === mesAtual() ? hoje() : `${estado.mes}-01`);
   form.dia.value = item?.dia || new Date().getDate();
-  form.repetir.checked = false;
   form.ativo.checked = item ? item.ativo !== false : true;
+  sel.rep = '';
+  sel.freq = modo === 'fixo' && item?.frequencia === 'semanal' ? 'semanal' : 'mensal';
+  sel.dow = item?.diaSemana ?? new Date().getDay();
 
   $('#campo-data').hidden = modo !== 'lanc';
-  $('#campo-dia').hidden = modo !== 'fixo';
+  $('#campo-freq').hidden = modo !== 'fixo';
   $('#campo-repetir').hidden = modo !== 'lanc' || !!item;
   $('#campo-ativo').hidden = modo !== 'fixo' || !item;
   $('#btn-excluir').style.visibility = item ? 'visible' : 'hidden';
   $('#sheet-titulo').textContent = modo === 'fixo'
-    ? (item ? 'Editar fixo mensal' : 'Novo fixo mensal')
+    ? (item ? 'Editar gasto fixo' : 'Novo gasto fixo')
     : (item ? 'Editar lançamento' : COM_RECEITAS ? 'Novo lançamento' : 'Novo gasto');
   $('#aviso').textContent = modo === 'lanc' && item?.fixoId
-    ? 'Gerado por um fixo mensal. Alterar aqui muda só este mês.'
+    ? 'Gerado por um gasto fixo. Alterar aqui muda só este lançamento.'
     : modo === 'fixo' && item ? 'Alterações valem a partir do próximo lançamento gerado.' : '';
   $('#btn-salvar').textContent = item ? 'Salvar alterações' : modo === 'fixo' ? 'Adicionar fixo' : 'Adicionar';
   renderSheet();
@@ -614,7 +641,38 @@ function renderSheet() {
   sheet.querySelector('[data-quando=hoje]').classList.toggle('ativo', d === hoje());
   sheet.querySelector('[data-quando=ontem]').classList.toggle('ativo', d === ontem());
   $('#chip-data').classList.toggle('ativo', !!outra);
+
+  // Repetir (ao lançar): os rótulos acompanham a data escolhida.
+  const base = d || hoje();
+  const opcoesRep = [['', 'Não'], ['semanal', rotuloSemana(diaDaSemana(base))], ['mensal', `Todo dia ${Number(base.slice(8))}`]];
+  $('#chips-repetir').innerHTML = opcoesRep.map(([v, rot]) => `<button type="button" class="chip ${sel.rep === v ? 'ativo' : ''}"
+    data-rep="${v}" aria-pressed="${sel.rep === v}">${rot}</button>`).join('');
+
+  // Frequência (fixo)
+  sheet.querySelectorAll('[data-freq]').forEach((b) => b.classList.toggle('ativo', b.dataset.freq === sel.freq));
+  $('#campo-dia').hidden = sel.freq !== 'mensal';
+  $('#campo-semana').hidden = sel.freq !== 'semanal';
+  $('#campo-semana').innerHTML = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((n, i) => `<button type="button"
+    class="chip ${sel.dow === i ? 'ativo' : ''}" data-dow="${i}" aria-pressed="${sel.dow === i}">${n}</button>`).join('');
 }
+$('#chips-repetir').onclick = (e) => {
+  const b = e.target.closest('[data-rep]');
+  if (!b) return;
+  sel.rep = b.dataset.rep;
+  renderSheet();
+};
+$('#chips-freq').onclick = (e) => {
+  const b = e.target.closest('[data-freq]');
+  if (!b) return;
+  sel.freq = b.dataset.freq;
+  renderSheet();
+};
+$('#campo-semana').onclick = (e) => {
+  const b = e.target.closest('[data-dow]');
+  if (!b) return;
+  sel.dow = Number(b.dataset.dow);
+  renderSheet();
+};
 
 function mostrarValor() {
   inpValor.value = fmtCent(sel.centavos);
@@ -697,12 +755,16 @@ form.onsubmit = (e) => {
   if (modo === 'lanc') {
     const data = form.data.value;
     const mes = data.slice(0, 7);
-    if (form.repetir.checked) {
+    if (sel.rep) {
+      // O próprio fixo gera o lançamento desta data.
+      const repeticao = sel.rep === 'semanal'
+        ? { frequencia: 'semanal', diaSemana: diaDaSemana(data) }
+        : { frequencia: 'mensal', dia: Number(data.slice(8)) };
       gravar(addDoc(collection(db, 'fixos'), {
-        ...base, dia: Number(data.slice(8)), ativo: true, inicio: mes, gerados: [],
+        ...base, ...repeticao, ativo: true, inicio: mes, inicioData: data, gerados: [],
         criadoPor: estado.user.email, criadoEm: serverTimestamp(),
       }));
-      toast(`${nome} fixo criado — vai se repetir todo dia ${Number(data.slice(8))}`);
+      toast(`${nome} fixo criado: ${rotuloRepeticao(repeticao).toLowerCase()}`);
     } else if (item) {
       gravar(updateDoc(doc(db, 'lancamentos', item.id), { ...base, data, mes }));
       toast('Alterações salvas');
@@ -714,13 +776,20 @@ form.onsubmit = (e) => {
     }
     irParaMes(mes);
   } else {
-    const dados = { ...base, dia: Math.min(31, Math.max(1, parseInt(form.dia.value, 10) || 1)), ativo: form.ativo.checked };
+    const dados = { ...base, frequencia: sel.freq, ativo: form.ativo.checked };
+    if (sel.freq === 'semanal') {
+      dados.diaSemana = sel.dow;
+      dados.inicioData = item?.inicioData || hoje();
+    } else {
+      dados.dia = Math.min(31, Math.max(1, parseInt(form.dia.value, 10) || 1));
+    }
     if (item) {
       gravar(updateDoc(doc(db, 'fixos', item.id), dados));
       toast('Fixo atualizado');
     } else {
       gravar(addDoc(collection(db, 'fixos'), {
-        ...dados, inicio: mesAtual(), gerados: [], criadoPor: estado.user.email, criadoEm: serverTimestamp(),
+        ...dados, inicio: mesAtual(), inicioData: hoje(), gerados: [],
+        criadoPor: estado.user.email, criadoEm: serverTimestamp(),
       }));
       toast(`${nome} fixo adicionado`);
     }

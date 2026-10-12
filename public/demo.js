@@ -109,4 +109,5 @@ for (const mes of [anterior, atual]) {
 }
 store.set('fixos/aluguel', { tipo: 'gasto', valor: 2100, dia: 10, categoria: 'Moradia', descricao: 'Aluguel', quem: 'Conta conjunta', ativo: true, inicio: anterior, gerados: [] });
 store.set('fixos/luz', { tipo: 'gasto', valor: 210, dia: 15, categoria: 'Contas da casa', descricao: 'Luz', quem: 'Esposa', ativo: true, inicio: anterior, gerados: [] });
+store.set('fixos/feira', { tipo: 'gasto', valor: 85, frequencia: 'semanal', diaSemana: 5, categoria: 'Mercado', descricao: 'Feira', quem: '', ativo: true, inicio: anterior, inicioData: `${anterior}-01`, gerados: [] });
 store.set('config/orcamentos', { limites: { Mercado: 900, Restaurante: 300, Lazer: 250, Compras: 300 } });
