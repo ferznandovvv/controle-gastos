@@ -14,132 +14,186 @@
 </head>
 <body>
   <!-- Login -->
-  <div id="tela-login" class="login">
+  <div id="tela-login" class="login hidden">
     <div class="login-box">
-      <img src="icons/icon.svg" alt="" width="72" height="72">
+      <img src="icons/icon.svg" alt="" width="80" height="80">
       <h1>Nossos Gastos</h1>
-      <p class="muted">Controle financeiro do casal</p>
-      <button id="btn-login" class="btn primario grande">Entrar com Google</button>
+      <p class="muted">O dinheiro do casal, organizado.</p>
+      <button id="btn-login" class="btn primario grande">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M21.35 11.1H12v2.98h5.38c-.24 1.4-1.7 4.1-5.38 4.1-3.24 0-5.88-2.68-5.88-5.98S8.76 6.22 12 6.22c1.84 0 3.08.79 3.78 1.46l2.58-2.48C16.7 3.66 14.55 2.7 12 2.7 6.92 2.7 2.8 6.82 2.8 11.9s4.12 9.2 9.2 9.2c5.31 0 8.84-3.73 8.84-8.99 0-.6-.07-1.06-.15-1.51z"/></svg>
+        Entrar com Google
+      </button>
       <p id="login-msg" class="erro"></p>
     </div>
   </div>
 
+  <div id="carregando" class="carregando"><div class="spinner"></div></div>
+
   <!-- App -->
   <div id="app" class="hidden">
     <header class="topo">
-      <div class="nav-mes">
-        <button id="mes-ant" class="icone" aria-label="Mês anterior">‹</button>
-        <h1 id="mes-titulo"></h1>
-        <button id="mes-prox" class="icone" aria-label="Próximo mês">›</button>
+      <div id="nav-mes" class="nav-mes">
+        <button id="mes-ant" class="icone" aria-label="Mês anterior">
+          <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button id="mes-titulo" class="mes-titulo" title="Voltar para o mês atual"></button>
+        <button id="mes-prox" class="icone" aria-label="Próximo mês">
+          <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
       </div>
-      <h1 id="titulo-aba" class="hidden"></h1>
+      <h1 id="titulo-aba" class="titulo-aba hidden"></h1>
     </header>
 
     <main>
       <!-- Resumo -->
       <section id="aba-resumo" class="aba">
-        <div class="cards">
-          <div class="card"><span class="rotulo">Receitas</span><strong id="card-receitas" class="pos"></strong></div>
-          <div class="card"><span class="rotulo">Gastos</span><strong id="card-gastos" class="neg"></strong><small id="comp-gastos" class="muted"></small></div>
-          <div class="card destaque"><span class="rotulo">Saldo do mês</span><strong id="card-saldo"></strong></div>
-        </div>
-
-        <div class="painel">
-          <h2>Gastos por categoria</h2>
-          <div id="grafico-wrap" class="grafico-wrap">
-            <canvas id="grafico-cat"></canvas>
-            <div class="grafico-centro"><small class="muted">Total</small><strong id="grafico-total"></strong></div>
+        <div class="hero">
+          <span id="hero-rotulo" class="hero-rotulo"></span>
+          <strong id="hero-saldo" class="hero-valor"></strong>
+          <div class="hero-linhas">
+            <div><small id="hero-l1"></small><b id="hero-receitas"></b></div>
+            <div><small id="hero-l2"></small><b id="hero-gastos"></b></div>
           </div>
-          <p id="sem-gastos" class="vazio hidden">Nenhum gasto lançado neste mês.</p>
-          <ul id="lista-cat" class="lista-cat"></ul>
+        </div>
+        <div id="insights" class="insights"></div>
+
+        <div id="painel-orc" class="painel"></div>
+
+        <div class="painel">
+          <div class="painel-cab"><h2>Gastos por categoria</h2></div>
+          <div id="cat-conteudo"></div>
         </div>
 
         <div class="painel">
-          <h2>Quem gastou</h2>
-          <ul id="lista-pessoas" class="lista-cat"></ul>
+          <div class="painel-cab"><h2>Quem pagou</h2></div>
+          <div id="pessoas-conteudo"></div>
+        </div>
+
+        <div class="painel">
+          <div class="painel-cab"><h2>Últimos lançamentos</h2><button class="link" data-ir="lancamentos">Ver todos</button></div>
+          <ul id="ultimos" class="itens"></ul>
         </div>
       </section>
 
       <!-- Lançamentos -->
       <section id="aba-lancamentos" class="aba hidden">
-        <div class="filtros">
-          <select id="filtro-tipo"><option value="">Tudo</option><option value="gasto">Gastos</option><option value="receita">Receitas</option></select>
-          <select id="filtro-cat"></select>
-          <select id="filtro-pessoa"></select>
+        <div class="busca">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="busca" type="search" placeholder="Buscar por descrição, categoria ou pessoa" autocomplete="off">
         </div>
-        <p id="total-filtro" class="muted total-filtro"></p>
+        <div id="chips-filtro" class="chips rolagem"></div>
+        <div id="total-filtro" class="total-filtro"></div>
         <div id="lista-lanc"></div>
       </section>
 
       <!-- Fixos -->
       <section id="aba-fixos" class="aba hidden">
-        <p class="muted ajuda">Receitas e contas que se repetem todo mês. Elas entram sozinhas nos lançamentos no início de cada mês.</p>
-        <div class="cards dois">
-          <div class="card"><span class="rotulo">Receitas fixas</span><strong id="fixo-receitas" class="pos"></strong></div>
-          <div class="card"><span class="rotulo">Gastos fixos</span><strong id="fixo-gastos" class="neg"></strong></div>
+        <div class="resumo-fixos">
+          <div class="so-receitas"><small>Receitas fixas</small><b id="fixo-receitas" class="pos"></b></div>
+          <div><small>Gastos fixos por mês</small><b id="fixo-gastos" class="neg"></b></div>
+          <div class="so-receitas"><small>Sobra</small><b id="fixo-sobra"></b></div>
         </div>
+        <p class="ajuda">Aluguel, contas, escola e assinaturas. Eles entram sozinhos nos lançamentos de cada mês, no dia marcado.</p>
         <div id="lista-fixos"></div>
       </section>
 
       <!-- Ajustes -->
       <section id="aba-ajustes" class="aba hidden">
         <div class="painel">
-          <h2>Orçamento mensal por categoria</h2>
-          <p class="muted ajuda">Deixe em branco para não ter limite.</p>
+          <h2>Orçamento mensal</h2>
+          <p class="ajuda">Quanto vocês querem gastar no máximo por categoria. Deixe em branco para não ter limite.</p>
           <div id="orc-campos" class="orc-campos"></div>
-          <button id="salvar-orc" class="btn primario">Salvar orçamentos</button>
+          <button id="salvar-orc" class="btn primario largo">Salvar orçamento</button>
         </div>
         <div class="painel">
           <h2>Pessoas e categorias</h2>
-          <p class="muted ajuda">Um item por linha.</p>
-          <label>Quem paga<textarea id="cfg-pessoas" rows="3"></textarea></label>
-          <label>Categorias de gasto<textarea id="cfg-cat-gasto" rows="8"></textarea></label>
-          <label>Categorias de receita<textarea id="cfg-cat-receita" rows="4"></textarea></label>
-          <button id="salvar-config" class="btn primario">Salvar</button>
+          <p class="ajuda">Um item por linha.</p>
+          <label class="campo-texto">Quem paga<textarea id="cfg-pessoas" rows="3"></textarea></label>
+          <label class="campo-texto">Categorias de gasto<textarea id="cfg-cat-gasto" rows="8"></textarea></label>
+          <label class="campo-texto so-receitas">Categorias de receita<textarea id="cfg-cat-receita" rows="4"></textarea></label>
+          <button id="salvar-config" class="btn primario largo">Salvar</button>
         </div>
-        <div class="painel">
-          <p class="muted">Conectado como <strong id="usuario-email"></strong></p>
+        <div class="painel conta">
+          <div><small class="muted">Conectado como</small><b id="usuario-email"></b></div>
           <button id="btn-sair" class="btn">Sair</button>
         </div>
       </section>
     </main>
 
-    <button id="fab" class="fab" aria-label="Adicionar">+</button>
+    <button id="fab" class="fab" aria-label="Adicionar">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
 
     <nav class="tabbar">
-      <button data-aba="resumo" class="ativo"><span>📊</span>Resumo</button>
-      <button data-aba="lancamentos"><span>📋</span>Lançamentos</button>
-      <button data-aba="fixos"><span>🔁</span>Fixos</button>
-      <button data-aba="ajustes"><span>⚙️</span>Ajustes</button>
+      <button data-aba="resumo" class="ativo">
+        <svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Resumo</button>
+      <button data-aba="lancamentos">
+        <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>Lançamentos</button>
+      <button data-aba="fixos">
+        <svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>Fixos</button>
+      <button data-aba="ajustes">
+        <svg viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>Ajustes</button>
     </nav>
   </div>
 
-  <!-- Diálogo de lançamento / fixo -->
-  <dialog id="dlg-item">
-    <form id="form-item">
-      <h2 id="dlg-titulo"></h2>
-      <div class="segmentado">
-        <label><input type="radio" name="tipo" value="gasto" checked><span>Gasto</span></label>
+  <!-- Folha de lançamento / fixo -->
+  <dialog id="sheet" class="sheet">
+    <form id="form-item" novalidate>
+      <div class="sheet-topo">
+        <button type="button" id="btn-fechar" class="icone" aria-label="Fechar">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <p id="sheet-titulo" class="sheet-titulo"></p>
+        <button type="button" id="btn-excluir" class="icone perigo" aria-label="Excluir">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></svg>
+        </button>
+      </div>
+      <div class="segmentado so-receitas" role="radiogroup">
+        <label><input type="radio" name="tipo" value="gasto"><span>Gasto</span></label>
         <label><input type="radio" name="tipo" value="receita"><span>Receita</span></label>
       </div>
-      <label>Valor (R$)<input name="valor" inputmode="decimal" autocomplete="off" placeholder="0,00" required></label>
-      <label id="campo-data">Data<input name="data" type="date" required></label>
-      <label id="campo-dia">Dia do mês<input name="dia" type="number" min="1" max="31" required></label>
-      <label>Categoria<select name="categoria" required></select></label>
-      <label>Descrição<input name="descricao" autocomplete="off" placeholder="Opcional"></label>
-      <label>Quem pagou<select name="quem" required></select></label>
-      <label id="campo-ativo" class="check"><input type="checkbox" name="ativo"> Ativo</label>
-      <p id="aviso-fixo" class="muted ajuda">Lançamento gerado a partir de um fixo. Alterar aqui muda só este mês.</p>
-      <div class="acoes">
-        <button type="button" id="btn-excluir" class="btn perigo">Excluir</button>
-        <span class="espaco"></span>
-        <button type="button" id="btn-cancelar" class="btn">Cancelar</button>
-        <button type="submit" class="btn primario">Salvar</button>
+
+      <label class="valor-wrap" id="valor-wrap">
+        <span>R$</span>
+        <input id="valor" inputmode="numeric" autocomplete="off" aria-label="Valor">
+      </label>
+
+      <div class="campo">
+        <span class="campo-rotulo">Categoria</span>
+        <div id="cats" class="grade-cat"></div>
       </div>
+
+      <div class="campo">
+        <input name="descricao" class="input" placeholder="Descrição (opcional)" autocomplete="off" maxlength="80">
+      </div>
+
+      <div class="campo">
+        <span class="campo-rotulo">Quem pagou</span>
+        <div id="pessoas" class="chips"></div>
+      </div>
+
+      <div class="campo" id="campo-data">
+        <span class="campo-rotulo">Data</span>
+        <div class="chips">
+          <button type="button" class="chip" data-quando="hoje">Hoje</button>
+          <button type="button" class="chip" data-quando="ontem">Ontem</button>
+          <label class="chip chip-data" id="chip-data"><input type="date" name="data" aria-label="Outra data"></label>
+        </div>
+      </div>
+
+      <div class="campo" id="campo-dia">
+        <span class="campo-rotulo">Todo dia</span>
+        <input name="dia" type="number" min="1" max="31" class="input dia">
+      </div>
+
+      <label class="toggle" id="campo-repetir"><span>Repetir todo mês</span><input type="checkbox" name="repetir"><i></i></label>
+      <label class="toggle" id="campo-ativo"><span>Ativo</span><input type="checkbox" name="ativo"><i></i></label>
+      <p id="aviso" class="ajuda"></p>
+
+      <button type="submit" id="btn-salvar" class="btn primario grande">Salvar</button>
     </form>
   </dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
