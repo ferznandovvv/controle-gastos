@@ -64,7 +64,7 @@
           <div id="cat-conteudo"></div>
         </div>
 
-        <div class="painel">
+        <div class="painel so-pessoas">
           <div class="painel-cab"><h2>Quem pagou</h2></div>
           <div id="pessoas-conteudo"></div>
         </div>
@@ -79,7 +79,7 @@
       <section id="aba-lancamentos" class="aba hidden">
         <div class="busca">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-          <input id="busca" type="search" placeholder="Buscar por descrição, categoria ou pessoa" autocomplete="off">
+          <input id="busca" type="search" placeholder="Buscar gasto" autocomplete="off">
         </div>
         <div id="chips-filtro" class="chips rolagem"></div>
         <div id="total-filtro" class="total-filtro"></div>
@@ -106,9 +106,9 @@
           <button id="salvar-orc" class="btn primario largo">Salvar orçamento</button>
         </div>
         <div class="painel">
-          <h2>Pessoas e categorias</h2>
+          <h2>Categorias</h2>
           <p class="ajuda">Um item por linha.</p>
-          <label class="campo-texto">Quem paga<textarea id="cfg-pessoas" rows="3"></textarea></label>
+          <label class="campo-texto so-pessoas">Quem paga<textarea id="cfg-pessoas" rows="3"></textarea></label>
           <label class="campo-texto">Categorias de gasto<textarea id="cfg-cat-gasto" rows="8"></textarea></label>
           <label class="campo-texto so-receitas">Categorias de receita<textarea id="cfg-cat-receita" rows="4"></textarea></label>
           <button id="salvar-config" class="btn primario largo">Salvar</button>
@@ -167,7 +167,7 @@
         <input name="descricao" class="input" placeholder="Descrição (opcional)" autocomplete="off" maxlength="80">
       </div>
 
-      <div class="campo">
+      <div class="campo so-pessoas">
         <span class="campo-rotulo">Quem pagou</span>
         <div id="pessoas" class="chips"></div>
       </div>

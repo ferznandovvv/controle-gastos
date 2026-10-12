@@ -17,7 +17,10 @@ const {
 
 // Receitas desligadas por enquanto: só gastos aparecem na interface.
 const COM_RECEITAS = false;
+// Sem separar quem pagou: os gastos são todos do casal.
+const COM_PESSOAS = false;
 document.body.classList.toggle('sem-receitas', !COM_RECEITAS);
+document.body.classList.toggle('sem-pessoas', !COM_PESSOAS);
 
 const PADRAO = {
   pessoas: ['Fernando', 'Esposa', 'Conta conjunta'],
@@ -283,9 +286,12 @@ function itemHtml(l, extra = '') {
   return `<li><button class="item" data-id="${l.id}" ${extra}>
     <span class="avatar" style="--c:${cor}">${emoji(l.categoria)}</span>
     <span class="info"><span class="titulo">${esc(l.descricao || l.categoria)}</span>
-      <small>${esc(l.categoria)} · ${esc(l.quem)}${l.fixoId ? ' · 🔁' : ''}</small></span>
+      <small>${detalhes(l.categoria, l.quem)}${l.fixoId ? ' · 🔁' : ''}${l.origem === 'whatsapp' ? ' · 💬' : ''}</small></span>
     <span class="valor ${receita ? 'pos' : ''}">${sinal(l)}${brl(l.valor)}</span>
   </button></li>`;
+}
+function detalhes(...partes) {
+  return partes.slice(0, COM_PESSOAS ? partes.length : 1).filter(Boolean).map(esc).join(' · ');
 }
 function sinal(l) {
   if (l.tipo === 'receita') return '+ ';
@@ -427,7 +433,7 @@ function renderLancamentos() {
   $('#chips-filtro').innerHTML = (f.categoria ? chip(`${emoji(f.categoria)} ${esc(f.categoria)} ✕`, true, 'data-limpar-cat') : '')
     + (COM_RECEITAS ? chip('Todos', !f.tipo, 'data-tipo=""') + chip('Gastos', f.tipo === 'gasto', 'data-tipo="gasto"')
       + chip('Receitas', f.tipo === 'receita', 'data-tipo="receita"') + '<span class="sep"></span>' : '')
-    + estado.config.pessoas.map((p) => chip(esc(p), f.quem === p, `data-quem="${esc(p)}"`)).join('');
+    + (COM_PESSOAS ? estado.config.pessoas.map((p) => chip(esc(p), f.quem === p, `data-quem="${esc(p)}"`)).join('') : '');
 
   const busca = normal(f.busca);
   const lista = lancsDoMes(estado.mes)
@@ -437,14 +443,14 @@ function renderLancamentos() {
 
   const t = totais(lista);
   $('#total-filtro').innerHTML = lista.length ? `<span>${lista.length} lançamento${lista.length > 1 ? 's' : ''}</span>
-    <span>${t.gastos ? `<b class="neg">− ${brl(t.gastos)}</b>` : ''}${t.receitas ? ` <b class="pos">+ ${brl(t.receitas)}</b>` : ''}</span>` : '';
+    <span>${t.gastos ? `<b class="neg">${COM_RECEITAS ? '− ' : ''}${brl(t.gastos)}</b>` : ''}${t.receitas ? ` <b class="pos">+ ${brl(t.receitas)}</b>` : ''}</span>` : '';
 
   const grupos = {};
   for (const l of lista) (grupos[l.data] ||= []).push(l);
   const filtrando = f.tipo || f.quem || f.categoria || busca;
   $('#lista-lanc').innerHTML = Object.entries(grupos).map(([data, itens]) => {
     const g = totais(itens).gastos;
-    return `<div class="dia-cab"><span>${rotuloDia(data)}</span>${g ? `<span>− ${brl(g)}</span>` : ''}</div>
+    return `<div class="dia-cab"><span>${rotuloDia(data)}</span>${g ? `<span>${COM_RECEITAS ? '− ' : ''}${brl(g)}</span>` : ''}</div>
       <ul class="itens">${itens.map((l) => itemHtml(l)).join('')}</ul>`;
   }).join('') || `<div class="vazio grande"><span>${filtrando ? '🔍' : '🧾'}</span>
     ${filtrando ? 'Nenhum lançamento com esses filtros.' : 'Nenhum lançamento neste mês.<br>Toque em <b>+</b> para adicionar.'}</div>`;
@@ -482,7 +488,7 @@ function renderFixos() {
       return `<li><button class="item ${f.ativo === false ? 'inativo' : ''}" data-id="${f.id}">
         <span class="avatar" style="--c:${receita ? '#059669' : corCategoria(f.categoria)}">${emoji(f.categoria)}</span>
         <span class="info"><span class="titulo">${esc(f.descricao || f.categoria)}</span>
-          <small>Todo dia ${f.dia} · ${esc(f.quem)}${f.ativo === false ? ' · pausado' : ''}</small></span>
+          <small>Todo dia ${f.dia} · ${detalhes(f.categoria, f.quem)}${f.ativo === false ? ' · pausado' : ''}</small></span>
         <span class="valor ${receita ? 'pos' : ''}">${sinal(f)}${brl(f.valor)}</span>
       </button></li>`;
     }).join('')}</ul>`;
@@ -512,7 +518,7 @@ $('#salvar-config').onclick = () => {
     catGasto: linhas($('#cfg-cat-gasto').value),
     catReceita: linhas($('#cfg-cat-receita').value),
   };
-  if (!novo.pessoas.length || !novo.catGasto.length || !novo.catReceita.length) {
+  if ((COM_PESSOAS && !novo.pessoas.length) || !novo.catGasto.length || (COM_RECEITAS && !novo.catReceita.length)) {
     alert('Cada lista precisa ter pelo menos um item.');
     return;
   }
@@ -682,7 +688,7 @@ form.onsubmit = (e) => {
     valor: sel.centavos / 100,
     categoria: sel.categoria,
     descricao: form.descricao.value.trim(),
-    quem: sel.quem,
+    quem: COM_PESSOAS ? sel.quem : (edicao.item?.quem || ''),
   };
   gravarLocal('ultimaPessoa', base.quem);
   sheet.close();

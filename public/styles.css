@@ -48,7 +48,8 @@ body {
   font-size: 16px;
   line-height: 1.4;
 }
-.hidden, [hidden], .sem-receitas .so-receitas { display: none !important; }
+.hidden, [hidden], .sem-receitas .so-receitas, .sem-pessoas .so-pessoas { display: none !important; }
+.chips:empty { display: none; }
 .sem-receitas .resumo-fixos { grid-template-columns: 1fr; }
 .sem-receitas .resumo-fixos b { font-size: 1.3rem; }
 .muted { color: var(--muted); }

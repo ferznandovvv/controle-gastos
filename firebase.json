@@ -11,5 +11,10 @@
   },
   "firestore": {
     "rules": "firestore.rules"
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs22",
+    "ignore": ["node_modules", "*.test.js", ".env*", "*.log"]
   }
 }
