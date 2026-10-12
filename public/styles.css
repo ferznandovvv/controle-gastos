@@ -130,6 +130,8 @@ main { padding: 4px 16px 0; }
 .insight { font-size: .82rem; padding: 6px 12px; border-radius: 999px; background: var(--sup); border: 1px solid var(--borda); }
 .insight.bom { color: var(--pos); }
 .insight.ruim { color: var(--neg); }
+button.insight.alerta { color: var(--alerta); border-color: currentColor; font-weight: 600; }
+.itens.pendentes { border-color: var(--alerta); border-style: dashed; }
 
 /* Painéis */
 .painel { background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); padding: 16px; box-shadow: var(--sombra); display: grid; gap: 12px; }
@@ -328,6 +330,8 @@ textarea:focus, .input:focus { border-color: var(--primaria); background: var(--
 .semana .chip { padding: 10px 0; text-align: center; font-size: .85rem; }
 
 .toggle { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--sup-2); border-radius: 14px; cursor: pointer; font-weight: 550; }
+.toggle > span { display: grid; gap: 2px; }
+.toggle small { font-weight: 400; font-size: .8rem; color: var(--muted); }
 .toggle input { position: absolute; opacity: 0; pointer-events: none; }
 .toggle i { width: 46px; height: 28px; border-radius: 99px; background: var(--borda); position: relative; transition: background .2s; flex: none; }
 .toggle i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); transition: transform .2s; }

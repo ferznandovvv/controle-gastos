@@ -65,14 +65,48 @@ async function totalDoMes(mes) {
   return snap.docs.reduce((s, d) => s + (d.get('tipo') === 'gasto' ? d.get('valor') : 0), 0);
 }
 
+// "luz 187,40": se a descrição bate com um fixo mensal de valor variável, grava o valor real da conta do mês
+// (no mesmo lançamento que o app gera para esse fixo) e usa esse valor como estimativa dos próximos meses.
+async function confirmarConta(de, r, mes) {
+  const desc = normal(r.descricao);
+  if (!desc) return false;
+  const fixos = await db.collection('fixos').where('variavel', '==', true).get();
+  const fixo = fixos.docs.find((d) => {
+    const nome = normal(d.get('descricao'));
+    return d.get('ativo') !== false && d.get('frequencia') !== 'semanal' && nome && (desc.includes(nome) || nome.includes(desc));
+  });
+  if (!fixo) return false;
+
+  const ref = db.doc(`lancamentos/${fixo.id}_${mes}`);
+  const atual = await ref.get();
+  const estimado = atual.exists ? atual.get('valor') : fixo.get('valor');
+  const [a, m] = mes.split('-').map(Number);
+  const dia = String(Math.min(fixo.get('dia'), new Date(Date.UTC(a, m, 0)).getUTCDate())).padStart(2, '0');
+  const b = db.batch();
+  b.set(ref, {
+    tipo: 'gasto', valor: r.valor, categoria: fixo.get('categoria'), descricao: fixo.get('descricao') || '', quem: '',
+    data: atual.exists ? atual.get('data') : `${mes}-${dia}`, mes, fixoId: fixo.id, confirmado: true,
+    criadoPor: atual.exists ? atual.get('criadoPor') : 'automático',
+    criadoEm: atual.exists ? atual.get('criadoEm') : FieldValue.serverTimestamp(),
+  });
+  b.update(fixo.ref, { valor: r.valor, gerados: FieldValue.arrayUnion(mes) });
+  await b.commit();
+  await responder(de, `✅ Conta *${fixo.get('descricao')}* de ${nomeMes(mes)}: ${brl(r.valor)}`
+    + `${estimado !== r.valor ? ` (estimativa era ${brl(estimado)})` : ''}\n`
+    + `Total de ${nomeMes(mes)}: ${brl(await totalDoMes(mes))}\n\nPara corrigir, mande de novo com o valor certo.`);
+  return true;
+}
+
 async function lancar(de, msg) {
   const r = interpretar(msg.text.body);
   if (!r) return responder(de, `Não encontrei o valor 🤔\n\n${AJUDA}`);
 
-  const config = (await db.doc('config/geral').get()).data() || {};
-  const categoria = escolherCategoria(r.descricao, config.catGasto?.length ? config.catGasto : CAT_PADRAO);
   const data = dataSP(r.diasAtras);
   const mes = data.slice(0, 7);
+  if (await confirmarConta(de, r, mes)) return;
+
+  const config = (await db.doc('config/geral').get()).data() || {};
+  const categoria = escolherCategoria(r.descricao, config.catGasto?.length ? config.catGasto : CAT_PADRAO);
   try {
     // O id da mensagem como id do documento evita duplicar quando a Meta reenvia o webhook.
     await db.collection('lancamentos').doc(`wa_${msg.id}`.replace(/[^\w.-]/g, '_')).create({

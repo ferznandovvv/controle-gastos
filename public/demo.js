@@ -21,6 +21,7 @@ export const where = (campo, op, valor) => ({ campo, op, valor });
 export const query = (col, ...filtros) => ({ tipo: 'col', nome: col.nome, filtros });
 export const serverTimestamp = () => ({ seconds: Date.now() / 1000 });
 export const arrayUnion = (...v) => ({ __union: v });
+export const arrayRemove = (...v) => ({ __remove: v });
 
 function snapCol(ref) {
   const docs = [];
@@ -38,6 +39,10 @@ function snapDoc(ref) {
 }
 const snap = (ref) => (ref.tipo === 'doc' ? snapDoc(ref) : snapCol(ref));
 
+export const getDocs = async (ref) => {
+  const s = snapCol(ref);
+  return { docs: s.docs.map((d) => ({ ...d, ref: { tipo: 'doc', path: `${ref.nome}/${d.id}` } })) };
+};
 export const onSnapshot = (ref, cb) => {
   const o = { ref, cb };
   ouvintes.add(o);
@@ -56,7 +61,11 @@ function mudou() {
 }
 function gravar(path, data, merge) {
   const r = merge ? { ...(store.get(path) || {}) } : {};
-  for (const [k, v] of Object.entries(data)) r[k] = v?.__union ? [...new Set([...(r[k] || []), ...v.__union])] : v;
+  for (const [k, v] of Object.entries(data)) {
+    if (v?.__union) r[k] = [...new Set([...(r[k] || []), ...v.__union])];
+    else if (v?.__remove) r[k] = (r[k] || []).filter((x) => !v.__remove.includes(x));
+    else r[k] = v;
+  }
   store.set(path, r);
 }
 export const setDoc = async (ref, data) => { gravar(ref.path, data); mudou(); };
@@ -73,6 +82,7 @@ export const writeBatch = () => {
   return {
     set: (r, d) => ops.push(() => gravar(r.path, d)),
     update: (r, d) => ops.push(() => gravar(r.path, d, true)),
+    delete: (r) => ops.push(() => store.delete(r.path)),
     commit: async () => { ops.forEach((f) => f()); mudou(); },
   };
 };
@@ -108,6 +118,6 @@ for (const mes of [anterior, atual]) {
   });
 }
 store.set('fixos/aluguel', { tipo: 'gasto', valor: 2100, dia: 10, categoria: 'Moradia', descricao: 'Aluguel', quem: 'Conta conjunta', ativo: true, inicio: anterior, gerados: [] });
-store.set('fixos/luz', { tipo: 'gasto', valor: 210, dia: 15, categoria: 'Contas da casa', descricao: 'Luz', quem: 'Esposa', ativo: true, inicio: anterior, gerados: [] });
+store.set('fixos/luz', { tipo: 'gasto', valor: 210, dia: 15, categoria: 'Contas da casa', descricao: 'Luz', quem: 'Esposa', variavel: true, ativo: true, inicio: anterior, gerados: [] });
 store.set('fixos/feira', { tipo: 'gasto', valor: 85, frequencia: 'semanal', diaSemana: 5, categoria: 'Mercado', descricao: 'Feira', quem: '', ativo: true, inicio: anterior, inicioData: `${anterior}-01`, gerados: [] });
 store.set('config/orcamentos', { limites: { Mercado: 900, Restaurante: 300, Lazer: 250, Compras: 300 } });
