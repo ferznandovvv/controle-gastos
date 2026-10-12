@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Nossos Gastos</title>
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Gastos">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Login -->
+  <div id="tela-login" class="login">
+    <div class="login-box">
+      <img src="icons/icon.svg" alt="" width="72" height="72">
+      <h1>Nossos Gastos</h1>
+      <p class="muted">Controle financeiro do casal</p>
+      <button id="btn-login" class="btn primario grande">Entrar com Google</button>
+      <p id="login-msg" class="erro"></p>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="hidden">
+    <header class="topo">
+      <div class="nav-mes">
+        <button id="mes-ant" class="icone" aria-label="Mês anterior">‹</button>
+        <h1 id="mes-titulo"></h1>
+        <button id="mes-prox" class="icone" aria-label="Próximo mês">›</button>
+      </div>
+      <h1 id="titulo-aba" class="hidden"></h1>
+    </header>
+
+    <main>
+      <!-- Resumo -->
+      <section id="aba-resumo" class="aba">
+        <div class="cards">
+          <div class="card"><span class="rotulo">Receitas</span><strong id="card-receitas" class="pos"></strong></div>
+          <div class="card"><span class="rotulo">Gastos</span><strong id="card-gastos" class="neg"></strong><small id="comp-gastos" class="muted"></small></div>
+          <div class="card destaque"><span class="rotulo">Saldo do mês</span><strong id="card-saldo"></strong></div>
+        </div>
+
+        <div class="painel">
+          <h2>Gastos por categoria</h2>
+          <div id="grafico-wrap" class="grafico-wrap">
+            <canvas id="grafico-cat"></canvas>
+            <div class="grafico-centro"><small class="muted">Total</small><strong id="grafico-total"></strong></div>
+          </div>
+          <p id="sem-gastos" class="vazio hidden">Nenhum gasto lançado neste mês.</p>
+          <ul id="lista-cat" class="lista-cat"></ul>
+        </div>
+
+        <div class="painel">
+          <h2>Quem gastou</h2>
+          <ul id="lista-pessoas" class="lista-cat"></ul>
+        </div>
+      </section>
+
+      <!-- Lançamentos -->
+      <section id="aba-lancamentos" class="aba hidden">
+        <div class="filtros">
+          <select id="filtro-tipo"><option value="">Tudo</option><option value="gasto">Gastos</option><option value="receita">Receitas</option></select>
+          <select id="filtro-cat"></select>
+          <select id="filtro-pessoa"></select>
+        </div>
+        <p id="total-filtro" class="muted total-filtro"></p>
+        <div id="lista-lanc"></div>
+      </section>
+
+      <!-- Fixos -->
+      <section id="aba-fixos" class="aba hidden">
+        <p class="muted ajuda">Receitas e contas que se repetem todo mês. Elas entram sozinhas nos lançamentos no início de cada mês.</p>
+        <div class="cards dois">
+          <div class="card"><span class="rotulo">Receitas fixas</span><strong id="fixo-receitas" class="pos"></strong></div>
+          <div class="card"><span class="rotulo">Gastos fixos</span><strong id="fixo-gastos" class="neg"></strong></div>
+        </div>
+        <div id="lista-fixos"></div>
+      </section>
+
+      <!-- Ajustes -->
+      <section id="aba-ajustes" class="aba hidden">
+        <div class="painel">
+          <h2>Orçamento mensal por categoria</h2>
+          <p class="muted ajuda">Deixe em branco para não ter limite.</p>
+          <div id="orc-campos" class="orc-campos"></div>
+          <button id="salvar-orc" class="btn primario">Salvar orçamentos</button>
+        </div>
+        <div class="painel">
+          <h2>Pessoas e categorias</h2>
+          <p class="muted ajuda">Um item por linha.</p>
+          <label>Quem paga<textarea id="cfg-pessoas" rows="3"></textarea></label>
+          <label>Categorias de gasto<textarea id="cfg-cat-gasto" rows="8"></textarea></label>
+          <label>Categorias de receita<textarea id="cfg-cat-receita" rows="4"></textarea></label>
+          <button id="salvar-config" class="btn primario">Salvar</button>
+        </div>
+        <div class="painel">
+          <p class="muted">Conectado como <strong id="usuario-email"></strong></p>
+          <button id="btn-sair" class="btn">Sair</button>
+        </div>
+      </section>
+    </main>
+
+    <button id="fab" class="fab" aria-label="Adicionar">+</button>
+
+    <nav class="tabbar">
+      <button data-aba="resumo" class="ativo"><span>📊</span>Resumo</button>
+      <button data-aba="lancamentos"><span>📋</span>Lançamentos</button>
+      <button data-aba="fixos"><span>🔁</span>Fixos</button>
+      <button data-aba="ajustes"><span>⚙️</span>Ajustes</button>
+    </nav>
+  </div>
+
+  <!-- Diálogo de lançamento / fixo -->
+  <dialog id="dlg-item">
+    <form id="form-item">
+      <h2 id="dlg-titulo"></h2>
+      <div class="segmentado">
+        <label><input type="radio" name="tipo" value="gasto" checked><span>Gasto</span></label>
+        <label><input type="radio" name="tipo" value="receita"><span>Receita</span></label>
+      </div>
+      <label>Valor (R$)<input name="valor" inputmode="decimal" autocomplete="off" placeholder="0,00" required></label>
+      <label id="campo-data">Data<input name="data" type="date" required></label>
+      <label id="campo-dia">Dia do mês<input name="dia" type="number" min="1" max="31" required></label>
+      <label>Categoria<select name="categoria" required></select></label>
+      <label>Descrição<input name="descricao" autocomplete="off" placeholder="Opcional"></label>
+      <label>Quem pagou<select name="quem" required></select></label>
+      <label id="campo-ativo" class="check"><input type="checkbox" name="ativo"> Ativo</label>
+      <p id="aviso-fixo" class="muted ajuda">Lançamento gerado a partir de um fixo. Alterar aqui muda só este mês.</p>
+      <div class="acoes">
+        <button type="button" id="btn-excluir" class="btn perigo">Excluir</button>
+        <span class="espaco"></span>
+        <button type="button" id="btn-cancelar" class="btn">Cancelar</button>
+        <button type="submit" class="btn primario">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
