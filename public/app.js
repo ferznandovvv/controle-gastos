@@ -426,7 +426,7 @@ function renderResumo() {
     : '<p class="vazio">Nada por aqui ainda.</p>';
 
   // Últimos
-  const ultimos = [...atual].sort(ordemRecente).slice(0, 5);
+  const ultimos = atual.filter((l) => !l.fixoId).sort(ordemRecente).slice(0, 5);
   $('#ultimos').innerHTML = ultimos.map((l) => itemHtml(l)).join('')
     || '<li class="vazio">Toque em <b>+</b> para lançar o primeiro gasto do mês.</li>';
 }
@@ -458,10 +458,14 @@ function renderLancamentos() {
     + (COM_PESSOAS ? estado.config.pessoas.map((p) => chip(esc(p), f.quem === p, `data-quem="${esc(p)}"`)).join('') : '');
 
   const busca = normal(f.busca);
-  const lista = lancsDoMes(estado.mes)
+  const filtrados = lancsDoMes(estado.mes)
     .filter((l) => (!f.tipo || l.tipo === f.tipo) && (!f.categoria || l.categoria === f.categoria) && (!f.quem || l.quem === f.quem))
     .filter((l) => !busca || normal(`${l.descricao} ${l.categoria} ${l.quem}`).includes(busca))
     .sort(ordemRecente);
+  // Fixos ficam fora da lista (estão na aba Fixos), mas aparecem resumidos no topo.
+  const lista = filtrados.filter((l) => !l.fixoId);
+  const fixos = filtrados.filter((l) => l.fixoId && l.tipo === 'gasto');
+  const totalFixos = fixos.reduce((s, l) => s + l.valor, 0);
 
   const t = totais(lista);
   $('#total-filtro').innerHTML = lista.length ? `<span>${lista.length} lançamento${lista.length > 1 ? 's' : ''}</span>
@@ -470,12 +474,17 @@ function renderLancamentos() {
   const grupos = {};
   for (const l of lista) (grupos[l.data] ||= []).push(l);
   const filtrando = f.tipo || f.quem || f.categoria || busca;
-  $('#lista-lanc').innerHTML = Object.entries(grupos).map(([data, itens]) => {
+  const linhaFixos = fixos.length ? `<button class="resumo-fixos-lanc" data-ir="fixos">
+      <span class="avatar pequeno">🔁</span>
+      <span class="info"><span class="titulo">Gastos fixos do mês</span>
+        <small>${fixos.length} lançado${fixos.length > 1 ? 's' : ''} · ver na aba Fixos</small></span>
+      <b class="valor">${brl(totalFixos)}</b></button>` : '';
+  $('#lista-lanc').innerHTML = linhaFixos + Object.entries(grupos).map(([data, itens]) => {
     const g = totais(itens).gastos;
     return `<div class="dia-cab"><span>${rotuloDia(data)}</span>${g ? `<span>${COM_RECEITAS ? '− ' : ''}${brl(g)}</span>` : ''}</div>
       <ul class="itens">${itens.map((l) => itemHtml(l)).join('')}</ul>`;
-  }).join('') || `<div class="vazio grande"><span>${filtrando ? '🔍' : '🧾'}</span>
-    ${filtrando ? 'Nenhum lançamento com esses filtros.' : 'Nenhum lançamento neste mês.<br>Toque em <b>+</b> para adicionar.'}</div>`;
+  }).join('') + (lista.length || (fixos.length && filtrando) ? '' : `<div class="vazio grande"><span>${filtrando ? '🔍' : '🧾'}</span>
+    ${filtrando ? 'Nenhum lançamento com esses filtros.' : 'Nenhum lançamento neste mês.<br>Toque em <b>+</b> para adicionar.'}</div>`);
 }
 $('#chips-filtro').onclick = (e) => {
   const b = e.target.closest('button');
