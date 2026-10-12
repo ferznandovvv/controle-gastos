@@ -1,7 +1,16 @@
 // Interpreta mensagens como "45,90 mercado", "uber 23", "ontem 120 farmácia".
 
 // Palavras que indicam cada categoria (comparadas sem acento e em minúsculas).
+// As mais específicas vêm primeiro: "pediatra" é Bebê antes de ser Saúde.
 const PALAVRAS = {
+  bebe: ['bebe', 'fralda', 'fraldas', 'lenco umedecido', 'lencos umedecidos', 'formula', 'leite em po', 'nan',
+    'aptamil', 'mamadeira', 'chupeta', 'pediatra', 'berco', 'carrinho', 'enxoval', 'body', 'macacao',
+    'pomada', 'creche', 'baba', 'papinha', 'bercario', 'brinquedo'],
+  roupas: ['roupa', 'roupas', 'sapato', 'tenis', 'camisa', 'calca', 'vestido', 'renner', 'riachuelo', 'cea', 'zara'],
+  beleza: ['salao', 'cabelo', 'cabeleireiro', 'manicure', 'unha', 'unhas', 'maquiagem', 'perfume', 'barbeiro',
+    'barbearia', 'depilacao', 'sobrancelha', 'boticario', 'natura'],
+  presentes: ['presente', 'presentes', 'lembrancinha'],
+  viagem: ['viagem', 'hotel', 'pousada', 'passagem', 'passagens', 'airbnb', 'aeroporto', 'hospedagem'],
   mercado: ['mercado', 'supermercado', 'feira', 'hortifruti', 'sacolao', 'padaria', 'acougue', 'atacadao',
     'assai', 'carrefour', 'extra', 'pao de acucar', 'compras do mes'],
   restaurante: ['restaurante', 'almoco', 'janta', 'jantar', 'lanche', 'pizza', 'ifood', 'hamburguer',

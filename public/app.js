@@ -24,12 +24,12 @@ document.body.classList.toggle('sem-pessoas', !COM_PESSOAS);
 
 const PADRAO = {
   pessoas: ['Fernando', 'Esposa', 'Conta conjunta'],
-  catGasto: ['Mercado', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
-    'Compras', 'Educação', 'Assinaturas', 'Pets', 'Outros'],
+  catGasto: ['Mercado', 'Bebê', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
+    'Viagem', 'Compras', 'Roupas', 'Beleza', 'Presentes', 'Educação', 'Assinaturas', 'Pets', 'Outros'],
   catReceita: ['Salário', 'Freela', 'Rendimentos', 'Outros'],
 };
 const EMOJI = {
-  mercado: '🛒', moradia: '🏠', aluguel: '🏠', 'contas da casa': '💡', contas: '💡', transporte: '🚗', carro: '🚗',
+  mercado: '🛒', bebe: '👶', moradia: '🏠', aluguel: '🏠', 'contas da casa': '💡', contas: '💡', transporte: '🚗', carro: '🚗',
   saude: '💊', restaurante: '🍽️', delivery: '🛵', lazer: '🎉', viagem: '✈️', compras: '🛍️', roupas: '👕',
   educacao: '📚', assinaturas: '📺', pets: '🐾', presentes: '🎁', beleza: '💅', academia: '🏋️', filhos: '🧸',
   outros: '📦', salario: '💼', freela: '💻', rendimentos: '📈', investimentos: '📈', reembolso: '↩️',

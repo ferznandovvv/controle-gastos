@@ -20,8 +20,9 @@ const WA_PERMITIDOS = defineString('WHATSAPP_NUMEROS_PERMITIDOS', {
 });
 const GRAPH = 'https://graph.facebook.com/v23.0';
 
-const CAT_PADRAO = ['Mercado', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
-  'Compras', 'Educação', 'Assinaturas', 'Pets', 'Outros'];
+// Mesma lista padrão do app (public/app.js), usada enquanto ninguém editar as categorias.
+const CAT_PADRAO = ['Mercado', 'Bebê', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
+  'Viagem', 'Compras', 'Roupas', 'Beleza', 'Presentes', 'Educação', 'Assinaturas', 'Pets', 'Outros'];
 const AJUDA = 'Mande o valor e o que foi, por exemplo:\n'
   + '• *45,90 mercado*\n• *uber 23*\n• *ontem 120 farmácia*\n\n'
   + 'Comandos: *total* (gastos do mês) e *desfazer* (apaga o último).';

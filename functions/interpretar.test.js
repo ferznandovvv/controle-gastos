@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { interpretar, escolherCategoria } from './interpretar.js';
 
-const CATS = ['Mercado', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
-  'Compras', 'Educação', 'Assinaturas', 'Pets', 'Outros'];
+const CATS = ['Mercado', 'Bebê', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
+  'Viagem', 'Compras', 'Roupas', 'Beleza', 'Presentes', 'Educação', 'Assinaturas', 'Pets', 'Outros'];
 
 test('valores e descrições', () => {
   const casos = [
@@ -37,6 +37,12 @@ test('categorias', () => {
   assert.equal(escolherCategoria('Conta de luz', CATS), 'Contas da casa');
   assert.equal(escolherCategoria('Netflix', CATS), 'Assinaturas');
   assert.equal(escolherCategoria('Ração', CATS), 'Pets');
+  assert.equal(escolherCategoria('Fralda', CATS), 'Bebê');
+  assert.equal(escolherCategoria('Pediatra', CATS), 'Bebê');
+  assert.equal(escolherCategoria('Bebê', CATS), 'Bebê');
+  assert.equal(escolherCategoria('Roupa Renner', CATS), 'Roupas');
+  assert.equal(escolherCategoria('Salão', CATS), 'Beleza');
+  assert.equal(escolherCategoria('Hotel praia', CATS), 'Viagem');
   assert.equal(escolherCategoria('Pao de queijo', CATS), 'Outros');
   assert.equal(escolherCategoria('', CATS), 'Outros');
 });
