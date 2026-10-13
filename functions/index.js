@@ -5,7 +5,7 @@ import { defineSecret, defineString } from 'firebase-functions/params';
 import { setGlobalOptions, logger } from 'firebase-functions';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { interpretar, escolherCategoria, normal } from './interpretar.js';
+import { interpretar, escolherCategoria, mesmaConta, normal } from './interpretar.js';
 
 setGlobalOptions({ region: 'southamerica-east1', maxInstances: 2 });
 initializeApp();
@@ -68,13 +68,10 @@ async function totalDoMes(mes) {
 // "luz 187,40": se a descrição bate com um fixo mensal de valor variável, grava o valor real da conta do mês
 // (no mesmo lançamento que o app gera para esse fixo) e usa esse valor como estimativa dos próximos meses.
 async function confirmarConta(de, r, mes) {
-  const desc = normal(r.descricao);
-  if (!desc) return false;
+  if (!normal(r.descricao)) return false;
   const fixos = await db.collection('fixos').where('variavel', '==', true).get();
-  const fixo = fixos.docs.find((d) => {
-    const nome = normal(d.get('descricao'));
-    return d.get('ativo') !== false && d.get('frequencia') !== 'semanal' && nome && (desc.includes(nome) || nome.includes(desc));
-  });
+  const fixo = fixos.docs.find((d) => d.get('ativo') !== false && d.get('frequencia') !== 'semanal'
+    && mesmaConta(d.get('descricao'), r.descricao));
   if (!fixo) return false;
 
   const ref = db.doc(`lancamentos/${fixo.id}_${mes}`);

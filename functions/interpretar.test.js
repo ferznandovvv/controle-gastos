@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { interpretar, escolherCategoria } from './interpretar.js';
+import { interpretar, escolherCategoria, mesmaConta } from './interpretar.js';
 
 const CATS = ['Mercado', 'Bebê', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
   'Viagem', 'Compras', 'Roupas', 'Beleza', 'Presentes', 'Educação', 'Assinaturas', 'Pets', 'Outros'];
@@ -27,6 +27,19 @@ test('sem valor', () => {
   assert.equal(interpretar('oi'), null);
   assert.equal(interpretar('total'), null);
   assert.equal(interpretar('0 mercado'), null);
+});
+
+test('mesma conta com nomes diferentes', () => {
+  assert.ok(mesmaConta('Energia', 'Luz'));
+  assert.ok(mesmaConta('Luz', 'Energia'));
+  assert.ok(mesmaConta('Conta de luz', 'Enel'));
+  assert.ok(mesmaConta('Água', 'Sabesp'));
+  assert.ok(mesmaConta('Internet', 'Vivo fibra'));
+  assert.ok(mesmaConta('Babá', 'Babá'));
+  assert.ok(!mesmaConta('Energia', 'Água'));
+  assert.ok(!mesmaConta('Internet', 'Luz'));
+  assert.ok(!mesmaConta('Aluguel', 'IPTU'));
+  assert.ok(!mesmaConta('Luz', ''));
 });
 
 test('categorias', () => {

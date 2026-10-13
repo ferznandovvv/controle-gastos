@@ -51,6 +51,36 @@ export function escolherCategoria(descricao, categorias) {
   return categorias.find((c) => normal(c) === 'outros') || categorias[categorias.length - 1] || 'Outros';
 }
 
+// Nomes diferentes para a mesma conta da casa (inclui as concessionárias mais comuns).
+const SINONIMOS = [
+  ['luz', 'energia', 'conta de luz', 'eletricidade', 'enel', 'cemig', 'light', 'cpfl', 'copel', 'celesc', 'coelba',
+    'celpe', 'equatorial', 'neoenergia', 'edp', 'energisa'],
+  ['agua', 'conta de agua', 'agua e esgoto', 'saneamento', 'sabesp', 'copasa', 'cedae', 'sanepar', 'embasa',
+    'compesa', 'caesb', 'corsan', 'casan', 'aegea', 'iguá', 'igua'],
+  ['internet', 'wifi', 'wi-fi', 'fibra', 'banda larga', 'net', 'vivo fibra', 'claro net', 'oi fibra', 'tim live'],
+  ['gas', 'gas encanado', 'comgas', 'botijao', 'naturgy', 'ultragaz'],
+  ['condominio', 'condo', 'taxa de condominio'],
+  ['celular', 'telefone', 'plano de celular', 'vivo', 'claro', 'tim', 'oi'],
+  ['aluguel', 'aluguel e iptu'],
+];
+
+// Grupo de sinônimos ao qual um texto pertence (ou o próprio texto, se não estiver em nenhum).
+function grupoDaConta(texto) {
+  const t = normal(texto);
+  const i = SINONIMOS.findIndex((g) => g.some((s) => t === normal(s) || temPalavra(t, normal(s))));
+  return i >= 0 ? `#${i}` : t;
+}
+
+// A mensagem fala da mesma conta que o fixo? ("luz" bate com "Energia", "conta da Sabesp" com "Água").
+export function mesmaConta(nomeFixo, descricao) {
+  const fixo = normal(nomeFixo);
+  const desc = normal(descricao);
+  if (!fixo || !desc) return false;
+  if (desc.includes(fixo) || fixo.includes(desc)) return true;
+  const g = grupoDaConta(fixo);
+  return g.startsWith('#') && g === grupoDaConta(desc);
+}
+
 const RE_VALOR = /(?:r\$\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|real|conto|contos)\b)?/i;
 
 // Retorna { valor, descricao, diasAtras } ou null se não houver valor.
