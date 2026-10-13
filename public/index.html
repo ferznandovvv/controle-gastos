@@ -47,6 +47,11 @@
     <main>
       <!-- Resumo -->
       <section id="aba-resumo" class="aba">
+        <div id="seg-periodo" class="seg" role="tablist">
+          <button data-periodo="mes" class="ativo">Mês</button>
+          <button data-periodo="ano">Ano</button>
+          <button data-periodo="tudo">Tudo</button>
+        </div>
         <div class="hero">
           <span id="hero-rotulo" class="hero-rotulo"></span>
           <strong id="hero-saldo" class="hero-valor"></strong>
@@ -57,21 +62,39 @@
         </div>
         <div id="insights" class="insights"></div>
 
-        <div id="painel-orc" class="painel"></div>
+        <div class="painel">
+          <div class="painel-cab"><h2>Por categoria</h2><span id="cat-sub" class="muted"></span></div>
+          <div id="cat-conteudo"></div>
+        </div>
+
+        <div class="painel so-mes">
+          <div class="painel-cab"><h2>Ritmo do mês</h2><span class="muted">gasto acumulado</span></div>
+          <div id="ritmo"></div>
+        </div>
 
         <div class="painel">
-          <div class="painel-cab"><h2>Gastos por categoria</h2></div>
-          <div id="cat-conteudo"></div>
+          <div class="painel-cab"><h2>Evolução mensal</h2><span id="evo-sub" class="muted"></span></div>
+          <div id="evolucao"></div>
+        </div>
+
+        <div class="painel">
+          <div class="painel-cab"><h2>Fixos × dia a dia</h2></div>
+          <div id="composicao"></div>
+        </div>
+
+        <div class="painel">
+          <div class="painel-cab"><h2>Maiores gastos</h2><span class="muted">sem fixos</span></div>
+          <ul id="maiores" class="itens"></ul>
+        </div>
+
+        <div class="painel so-mes">
+          <div class="painel-cab"><h2>Últimos lançamentos</h2><button class="link" data-ir="lancamentos">Ver todos</button></div>
+          <ul id="ultimos" class="itens"></ul>
         </div>
 
         <div class="painel so-pessoas">
           <div class="painel-cab"><h2>Quem pagou</h2></div>
           <div id="pessoas-conteudo"></div>
-        </div>
-
-        <div class="painel">
-          <div class="painel-cab"><h2>Últimos lançamentos</h2><button class="link" data-ir="lancamentos">Ver todos</button></div>
-          <ul id="ultimos" class="itens"></ul>
         </div>
       </section>
 

@@ -107,17 +107,25 @@ const exemplos = [
   ['gasto', 'Assinaturas', 'Netflix', 'Fernando', 44.9],
 ];
 let n = 0;
-for (const mes of [anterior, atual]) {
-  const ultimo = mes === atual ? hoje.getDate() : 28;
+// 6 meses de histórico, com o aluguel e a luz já lançados nos meses passados.
+const fatores = [1.15, 0.8, 1.05, 0.95, 0.9, 1];
+for (let k = 5; k >= 0; k--) {
+  const mes = mesDe(new Date(hoje.getFullYear(), hoje.getMonth() - k, 1));
+  const ultimo = k === 0 ? hoje.getDate() : 28;
   exemplos.forEach(([tipo, categoria, descricao, quem, valor], i) => {
     const dia = Math.max(1, Math.round(((i + 1) / exemplos.length) * ultimo));
     store.set(`lancamentos/x${++n}`, {
-      tipo, categoria, descricao, quem, valor: mes === atual ? valor : Math.round(valor * 0.9 * 100) / 100,
+      tipo, categoria, descricao, quem, valor: Math.round(valor * fatores[5 - k] * (1 + (i % 3) * 0.07) * 100) / 100,
       data: `${mes}-${pad(dia)}`, mes, criadoPor: 'demo', criadoEm: { seconds: n },
     });
   });
+  if (k > 0) {
+    store.set(`lancamentos/aluguel_${mes}`, { tipo: 'gasto', valor: 2100, categoria: 'Moradia', descricao: 'Aluguel', quem: '', data: `${mes}-10`, mes, fixoId: 'aluguel', confirmado: false, criadoEm: { seconds: n } });
+    store.set(`lancamentos/luz_${mes}`, { tipo: 'gasto', valor: 180 + k * 12, categoria: 'Contas da casa', descricao: 'Luz', quem: '', data: `${mes}-15`, mes, fixoId: 'luz', confirmado: true, criadoEm: { seconds: n } });
+  }
 }
-store.set('fixos/aluguel', { tipo: 'gasto', valor: 2100, dia: 10, categoria: 'Moradia', descricao: 'Aluguel', quem: 'Conta conjunta', ativo: true, inicio: anterior, gerados: [] });
-store.set('fixos/luz', { tipo: 'gasto', valor: 210, dia: 15, categoria: 'Contas da casa', descricao: 'Luz', quem: 'Esposa', variavel: true, ativo: true, inicio: anterior, gerados: [] });
+const mesesPassados = Array.from({ length: 5 }, (_, i) => mesDe(new Date(hoje.getFullYear(), hoje.getMonth() - 5 + i, 1)));
+store.set('fixos/aluguel', { tipo: 'gasto', valor: 2100, dia: 10, categoria: 'Moradia', descricao: 'Aluguel', quem: '', ativo: true, inicio: mesesPassados[0], gerados: mesesPassados });
+store.set('fixos/luz', { tipo: 'gasto', valor: 210, dia: 15, categoria: 'Contas da casa', descricao: 'Luz', quem: '', variavel: true, ativo: true, inicio: mesesPassados[0], gerados: mesesPassados });
 store.set('fixos/feira', { tipo: 'gasto', valor: 85, frequencia: 'semanal', diaSemana: 5, categoria: 'Mercado', descricao: 'Feira', quem: '', ativo: true, inicio: anterior, inicioData: `${anterior}-01`, gerados: [] });
 store.set('config/orcamentos', { limites: { Mercado: 900, Restaurante: 300, Lazer: 250, Compras: 300 } });

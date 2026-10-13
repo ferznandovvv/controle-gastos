@@ -41,6 +41,9 @@ const CORES_PESSOAS = ['#2563eb', '#db2777', '#0d9488', '#d97706', '#7c3aed'];
 const estado = {
   user: null,
   mes: mesAtual(),
+  ano: new Date().getFullYear(),
+  periodo: 'mes', // período do Resumo: 'mes' | 'ano' | 'tudo'
+  catAberta: null, // categoria expandida no Resumo
   aba: 'resumo',
   lancs: [],
   fixos: [],
@@ -217,10 +220,10 @@ function iniciarListeners() {
   assinarLancamentos();
 }
 
+// Escuta todos os lançamentos (são poucos por mês): o resumo compara meses, anos e o acumulado.
 function assinarLancamentos() {
   estado.unsubLancs?.();
-  const q = query(collection(db, 'lancamentos'), where('mes', 'in', [estado.mes, somaMes(estado.mes, -1)]));
-  estado.unsubLancs = onSnapshot(q, (s) => {
+  estado.unsubLancs = onSnapshot(collection(db, 'lancamentos'), (s) => {
     estado.lancs = s.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderResumo();
     renderLancamentos();
@@ -282,14 +285,41 @@ function gravar(promessa) {
 function irParaMes(mes) {
   if (mes === estado.mes) return;
   estado.mes = mes;
-  estado.lancs = [];
+  estado.catAberta = null;
   renderTudo();
-  assinarLancamentos();
   gerarFixos().catch(console.error);
 }
-$('#mes-ant').onclick = () => irParaMes(somaMes(estado.mes, -1));
-$('#mes-prox').onclick = () => irParaMes(somaMes(estado.mes, 1));
-$('#mes-titulo').onclick = () => irParaMes(mesAtual());
+// No Resumo as setas andam pelo período escolhido (mês ou ano); nas outras abas, sempre por mês.
+function periodoVisivel() { return estado.aba === 'resumo' ? estado.periodo : 'mes'; }
+function navegar(n) {
+  if (periodoVisivel() === 'ano') {
+    estado.ano += n;
+    estado.catAberta = null;
+    renderTudo();
+  } else irParaMes(somaMes(estado.mes, n));
+}
+$('#mes-ant').onclick = () => navegar(-1);
+$('#mes-prox').onclick = () => navegar(1);
+$('#mes-titulo').onclick = () => {
+  estado.ano = new Date().getFullYear();
+  if (estado.mes === mesAtual()) renderTudo();
+  else irParaMes(mesAtual());
+};
+function renderCabecalho() {
+  const p = periodoVisivel();
+  let titulo = 'Todo o período';
+  let voltar = false;
+  if (p === 'mes') {
+    titulo = cap(nomeMes(estado.mes));
+    voltar = estado.mes !== mesAtual();
+  } else if (p === 'ano') {
+    titulo = String(estado.ano);
+    voltar = estado.ano !== new Date().getFullYear();
+  }
+  $('#mes-titulo').innerHTML = esc(titulo) + (voltar ? '<small>voltar para hoje</small>' : '');
+  $('#mes-ant').style.visibility = p === 'tudo' ? 'hidden' : 'visible';
+  $('#mes-prox').style.visibility = p === 'tudo' ? 'hidden' : 'visible';
+}
 
 const TITULOS = { fixos: 'Gastos fixos', ajustes: 'Ajustes' };
 function irPara(aba) {
@@ -301,6 +331,7 @@ function irPara(aba) {
   $('#titulo-aba').classList.toggle('hidden', comMes);
   $('#titulo-aba').textContent = TITULOS[aba] || '';
   $('#fab').classList.toggle('hidden', aba === 'ajustes');
+  renderCabecalho();
   if (aba === 'ajustes') renderAjustes();
   if (aba === 'lancamentos') renderLancamentos();
   window.scrollTo(0, 0);
@@ -314,8 +345,7 @@ $('#fab').onclick = () => abrirSheet(estado.aba === 'fixos' ? 'fixo' : 'lanc');
 
 // ---------- renderização ----------
 function renderTudo() {
-  const titulo = cap(nomeMes(estado.mes));
-  $('#mes-titulo').innerHTML = estado.mes === mesAtual() ? esc(titulo) : `${esc(titulo)}<small>voltar para hoje</small>`;
+  renderCabecalho();
   renderResumo();
   renderLancamentos();
   renderFixos();
@@ -339,66 +369,132 @@ function sinal(l) {
   return COM_RECEITAS ? '− ' : '';
 }
 
+// ---------- resumo ----------
+// O Resumo olha só os gastos (receitas estão desligadas) do período escolhido: um mês, um ano ou tudo.
+function mesCurto(mes) { return nomeMes(mes, { month: 'short' }).replace('.', ''); }
+function compacto(v) {
+  if (v < 1000) return String(Math.round(v));
+  return `${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: v >= 10000 ? 0 : 1 })}k`;
+}
+function dataCurta(data) {
+  const ano = data.slice(0, 4) === String(new Date().getFullYear()) ? '' : `/${data.slice(2, 4)}`;
+  return `${data.slice(8)}/${data.slice(5, 7)}${ano}`;
+}
+function gastosDe(lista) { return lista.filter((l) => l.tipo === 'gasto'); }
+function soma(lista) { return lista.reduce((s, l) => s + l.valor, 0); }
+
+// Meses cobertos pelo período (no Ano e no Tudo, só até o mês atual).
+function mesesDoPeriodo() {
+  if (estado.periodo === 'mes') return [estado.mes];
+  const atual = mesAtual();
+  if (estado.periodo === 'ano') {
+    const r = [];
+    for (let m = 1; m <= 12; m++) if (`${estado.ano}-${pad(m)}` <= atual) r.push(`${estado.ano}-${pad(m)}`);
+    return r.length ? r : [`${estado.ano}-01`];
+  }
+  const primeiro = estado.lancs.reduce((min, l) => (l.mes < min ? l.mes : min), atual);
+  const r = [];
+  for (let m = primeiro; m <= atual; m = somaMes(m, 1)) r.push(m);
+  return r;
+}
+function gastosDoPeriodo(meses) {
+  const set = new Set(meses);
+  return gastosDe(estado.lancs.filter((l) => set.has(l.mes)));
+}
+// Lançamentos de contas variáveis que ainda esperam o valor real (em qualquer mês).
+function idsAConfirmar() {
+  const variaveis = new Set(estado.fixos.filter((f) => f.variavel).map((f) => f.id));
+  return new Set(estado.lancs.filter((l) => variaveis.has(l.fixoId) && !l.confirmado).map((l) => l.id));
+}
+
 function renderResumo() {
   if (!estado.user) return;
-  const mesAnt = somaMes(estado.mes, -1);
-  const atual = lancsDoMes(estado.mes);
-  const anterior = lancsDoMes(mesAnt);
-  const t = totais(atual);
-  const ta = totais(anterior);
-  const saldo = t.receitas - t.gastos;
-  const ehAtual = estado.mes === mesAtual();
+  const modoMes = estado.periodo === 'mes';
+  document.querySelectorAll('#seg-periodo button').forEach((b) => b.classList.toggle('ativo', b.dataset.periodo === estado.periodo));
+  document.querySelectorAll('#aba-resumo .so-mes').forEach((el) => el.classList.toggle('hidden', !modoMes));
+  const meses = mesesDoPeriodo();
+  const gastos = gastosDoPeriodo(meses);
+  const total = soma(gastos);
+  renderHero(gastos, total, meses);
+  renderInsights(gastos, total);
+  renderCategorias(gastos, total, meses);
+  if (modoMes) renderRitmo();
+  renderEvolucao();
+  renderComposicao(gastos, total, meses);
+  renderMaiores(gastos);
+  if (modoMes) renderUltimos(gastos);
+  renderPessoas(gastos, total);
+}
 
-  const diasCorridos = ehAtual ? new Date().getDate() : estado.mes < mesAtual() ? diasNoMes(estado.mes) : 1;
-  if (COM_RECEITAS) {
-    $('#hero-rotulo').textContent = `Saldo de ${nomeMes(estado.mes, { month: 'long' })}`;
-    $('#hero-saldo').textContent = brl(saldo);
-    $('#hero-saldo').classList.toggle('negativo', saldo < 0);
-    $('#hero-l1').textContent = '↑ Receitas';
-    $('#hero-receitas').textContent = brl(t.receitas);
-    $('#hero-l2').textContent = '↓ Gastos';
-    $('#hero-gastos').textContent = brl(t.gastos);
-  } else {
-    // Fixos já são lançados para o mês inteiro; o que tem data depois de hoje ainda vai vencer.
-    const aVencer = atual.filter((l) => l.tipo === 'gasto' && l.data > hoje()).reduce((s, l) => s + l.valor, 0);
+function renderHero(gastos, total, meses) {
+  const preencher = (rotulo, l1, v1, l2, v2) => {
+    $('#hero-rotulo').textContent = rotulo;
+    $('#hero-saldo').textContent = brl(total);
+    $('#hero-l1').textContent = l1;
+    $('#hero-receitas').textContent = v1;
+    $('#hero-l2').textContent = l2;
+    $('#hero-gastos').textContent = v2;
+  };
+  if (estado.periodo === 'mes') {
     const nome = nomeMes(estado.mes, { month: 'long' });
-    $('#hero-rotulo').textContent = aVencer ? `Previsto para ${nome}` : `Gastos de ${nome}`;
-    $('#hero-saldo').textContent = brl(t.gastos);
-    if (aVencer) {
-      $('#hero-l1').textContent = 'Já gasto';
-      $('#hero-receitas').textContent = brl(t.gastos - aVencer);
-      $('#hero-l2').textContent = 'Fixos a vencer';
-      $('#hero-gastos').textContent = brl(aVencer);
-    } else {
-      $('#hero-l1').textContent = cap(nomeMes(mesAnt, { month: 'long' }));
-      $('#hero-receitas').textContent = brl(ta.gastos);
-      $('#hero-l2').textContent = 'Média por dia';
-      $('#hero-gastos').textContent = brl(t.gastos / diasCorridos);
+    // Fixos já são lançados para o mês inteiro; o que tem data depois de hoje ainda vai vencer.
+    const aVencer = soma(gastos.filter((l) => l.data > hoje()));
+    if (aVencer) return preencher(`Previsto para ${nome}`, 'Já gasto', brl(total - aVencer), 'Fixos a vencer', brl(aVencer));
+    const mesAnt = somaMes(estado.mes, -1);
+    const dias = estado.mes === mesAtual() ? new Date().getDate() : estado.mes < mesAtual() ? diasNoMes(estado.mes) : 1;
+    return preencher(`Gastos de ${nome}`, cap(nomeMes(mesAnt, { month: 'long' })), brl(soma(gastosDe(lancsDoMes(mesAnt)))),
+      'Média por dia', brl(total / dias));
+  }
+  const [mesTop, vTop] = Object.entries(somar(gastos, 'mes')).sort((a, b) => b[1] - a[1])[0] || [];
+  const rotulo = estado.periodo === 'ano' ? `Gastos em ${estado.ano}` : `Gastos desde ${mesCurto(meses[0])} de ${meses[0].slice(0, 4)}`;
+  preencher(rotulo, `Média por mês (${meses.length})`, brl(total / meses.length),
+    'Mês mais caro', mesTop ? `${cap(mesCurto(mesTop))} · ${brl(vTop)}` : '—');
+}
+
+function renderInsights(gastos, total) {
+  const ins = [];
+  const chip = (texto, classe = '') => `<span class="insight ${classe}">${texto}</span>`;
+  const variacao = (v, rotulo) => chip(`${v <= 0 ? '▼' : '▲'} ${Math.abs(v).toFixed(0)}% ${rotulo}`, v <= 0 ? 'bom' : 'ruim');
+  if (estado.periodo === 'mes' && total > 0) {
+    const mesAnt = somaMes(estado.mes, -1);
+    const ant = soma(gastosDe(lancsDoMes(mesAnt)));
+    if (ant > 0) ins.push(variacao(((total - ant) / ant) * 100, `vs ${mesCurto(mesAnt)}`));
+    const anteriores = [1, 2, 3].map((n) => soma(gastosDe(lancsDoMes(somaMes(estado.mes, -n))))).filter((v) => v > 0);
+    if (anteriores.length >= 2) {
+      const media = anteriores.reduce((a, b) => a + b, 0) / anteriores.length;
+      ins.push(variacao(((total - media) / media) * 100, `vs média de ${anteriores.length} meses`));
     }
   }
-
-  // Destaques rápidos
-  const ins = [];
-  if (ta.gastos > 0 && t.gastos > 0) {
-    const v = ((t.gastos - ta.gastos) / ta.gastos) * 100;
-    ins.push(`<span class="insight ${v <= 0 ? 'bom' : 'ruim'}">${v <= 0 ? '▼' : '▲'} ${Math.abs(v).toFixed(0)}% de gastos vs ${nomeMes(mesAnt, { month: 'short' }).replace('.', '')}</span>`);
+  if (estado.periodo === 'mes') {
+    const pend = aConfirmar(estado.mes).length;
+    if (pend) ins.push(`<button class="insight alerta" data-ir="fixos">📝 ${pend} conta${pend > 1 ? 's' : ''} a confirmar</button>`);
   }
-  if (COM_RECEITAS && t.gastos > 0) ins.push(`<span class="insight">≈ ${brl(t.gastos / diasCorridos)} por dia</span>`);
-  const pendentes = aConfirmar(estado.mes).length;
-  if (pendentes) {
-    ins.push(`<button class="insight alerta" data-ir="fixos">📝 ${pendentes} conta${pendentes > 1 ? 's' : ''} a confirmar</button>`);
-  }
+  const [cat, v] = Object.entries(somar(gastos, 'categoria')).sort((a, b) => b[1] - a[1])[0] || [];
+  if (cat && total) ins.push(chip(`${emoji(cat)} ${esc(cat)} é ${((v / total) * 100).toFixed(0)}% dos gastos`));
   $('#insights').innerHTML = ins.join('');
+}
 
-  // Orçamento total
-  const gastos = atual.filter((l) => l.tipo === 'gasto');
+// Barra de orçamento; a marca mostra quanto do mês já passou (onde o gasto "deveria" estar).
+function barraOrc(pct, ritmo, grossa = false) {
+  const adiantado = ritmo != null ? pct > ritmo + 10 : pct > 85;
+  const classe = pct > 100 ? 'estourou' : adiantado ? 'alerta' : '';
+  return `<span class="barra ${grossa ? 'grossa' : ''} ${classe}"><span style="width:${Math.min(pct, 100)}%"></span>
+    ${ritmo != null ? `<i class="marca-ritmo" style="left:${ritmo}%"></i>` : ''}</span>`;
+}
+
+function renderCategorias(gastos, total, meses) {
+  const n = meses.length;
   const porCat = somar(gastos, 'categoria');
   const limites = Object.entries(estado.orcamentos).filter(([, v]) => v > 0);
-  const painelOrc = $('#painel-orc');
+  const ehAtual = estado.periodo === 'mes' && estado.mes === mesAtual();
+  const ritmo = ehAtual ? (new Date().getDate() / diasNoMes(estado.mes)) * 100 : null;
+  $('#cat-sub').textContent = n > 1 ? `${n} meses` : '';
+
+  // Orçamento do período = limite mensal × número de meses.
+  let orc = '';
   if (limites.length) {
-    const totalLim = limites.reduce((s, [, v]) => s + v, 0);
+    const totalLim = limites.reduce((s, [, v]) => s + v, 0) * n;
     const usado = limites.reduce((s, [c]) => s + (porCat[c] || 0), 0);
-    const pct = (usado / totalLim) * 100;
     const resta = totalLim - usado;
     let sub;
     if (resta < 0) sub = `Passou <b class="neg">${brl(-resta)}</b> do planejado`;
@@ -406,80 +502,235 @@ function renderResumo() {
       const diasRest = diasNoMes(estado.mes) - new Date().getDate() + 1;
       sub = `Restam <b>${brl(resta)}</b> · dá para gastar <b>${brl(resta / diasRest)}</b> por dia`;
     } else sub = `Sobrou <b>${brl(resta)}</b> do planejado`;
-    painelOrc.innerHTML = `
-      <div class="painel-cab"><h2>Orçamento do mês</h2><span class="muted">${pct.toFixed(0)}%</span></div>
-      <div class="orc-total"><b>${brl(usado)}</b><span class="muted"> de ${brl(totalLim)}</span></div>
-      <div class="barra grossa ${pct > 100 ? 'estourou' : pct > 85 ? 'alerta' : ''}"><div style="width:${Math.min(pct, 100)}%"></div></div>
-      <p class="orc-sub">${sub}</p>`;
-  } else {
-    painelOrc.innerHTML = `
-      <div class="cta"><span class="cta-emoji">🎯</span><div><b>Defina um orçamento</b>
+    orc = `<div class="orc-bloco">
+      <div class="linha"><span class="muted">Orçamento</span><span><b>${brl(usado)}</b><span class="muted"> de ${brl(totalLim)}</span></span></div>
+      ${barraOrc((usado / totalLim) * 100, ritmo, true)}
+      <p class="orc-sub">${sub}${ritmo != null ? ' · <i class="marca-legenda"></i> hoje' : ''}</p></div>`;
+  } else if (estado.periodo === 'mes') {
+    orc = `<div class="cta"><span class="cta-emoji">🎯</span><div><b>Defina um orçamento</b>
       <small class="muted">Escolha um limite por categoria e acompanhe quanto ainda dá para gastar.</small></div>
       <button class="btn pequeno" data-ir="ajustes">Definir</button></div>`;
   }
 
-  // Por categoria
   const cats = [...new Set([...Object.keys(porCat), ...limites.map(([c]) => c)])]
-    .sort((a, b) => (porCat[b] || 0) - (porCat[a] || 0));
-  if (!gastos.length && !cats.length) {
-    $('#cat-conteudo').innerHTML = '<p class="vazio">Nenhum gasto neste mês ainda.</p>';
-  } else {
-    let acc = 0;
-    const fatias = cats.filter((c) => porCat[c] > 0).map((c) => {
-      const ini = acc;
-      acc += (porCat[c] / t.gastos) * 100;
-      return `${corCategoria(c)} ${ini}% ${acc}%`;
-    });
-    $('#cat-conteudo').innerHTML = `
-      ${t.gastos > 0 ? `<div class="rosca" style="background:conic-gradient(${fatias.join(',')})">
-        <div><small>Total gasto</small><b>${brl(t.gastos)}</b></div></div>` : ''}
-      <ul class="lista-cat ${estado.catsAbertas || cats.length <= 6 ? '' : 'recolhida'}">${cats.map((c) => {
-        const g = porCat[c] || 0;
-        const lim = estado.orcamentos[c] || 0;
-        const pct = lim ? (g / lim) * 100 : 0;
-        const classe = pct > 100 ? 'estourou' : pct > 85 ? 'alerta' : '';
-        return `<li><button class="cat-linha" data-cat="${esc(c)}">
-          <span class="avatar pequeno" style="--c:${corCategoria(c)}">${emoji(c)}</span>
-          <span class="cat-info">
-            <span class="linha"><span>${esc(c)}</span><b>${brl(g)}</b></span>
-            ${lim ? `<span class="barra ${classe}"><span style="width:${Math.min(pct, 100)}%"></span></span>
-              <small class="muted">${g <= lim ? `restam ${brl(lim - g)} de ${brl(lim)}` : `passou ${brl(g - lim)} do limite de ${brl(lim)}`}</small>`
-              : `<small class="muted">${t.gastos ? ((g / t.gastos) * 100).toFixed(0) : 0}% dos gastos</small>`}
-          </span></button></li>`;
-      }).join('')}</ul>
-      ${cats.length > 6 ? `<button class="link centro" id="ver-cats">${estado.catsAbertas ? 'Mostrar menos' : `Mostrar todas (${cats.length})`}</button>` : ''}`;
+    .sort((a, b) => (porCat[b] || 0) - (porCat[a] || 0) || (estado.orcamentos[b] || 0) - (estado.orcamentos[a] || 0));
+  if (!total) {
+    $('#cat-conteudo').innerHTML = `${orc}<p class="vazio">Nenhum gasto neste período ainda.</p>`;
+    return;
   }
 
-  // Quem pagou
+  let acc = 0;
+  const fatias = cats.filter((c) => porCat[c] > 0).map((c) => {
+    const ini = acc;
+    acc += (porCat[c] / total) * 100;
+    return `${corCategoria(c)} ${ini}% ${acc}%`;
+  });
+  const recolhida = !estado.catsAbertas && cats.length > 6 && !cats.slice(6).includes(estado.catAberta);
+  const pendentes = idsAConfirmar();
+
+  $('#cat-conteudo').innerHTML = `
+    <div class="rosca" style="background:conic-gradient(${fatias.join(',')})">
+      <div><small>Total</small><b>${brl(total)}</b></div></div>
+    ${orc}
+    <ul class="lista-cat ${recolhida ? 'recolhida' : ''}">${cats.map((c) => {
+      const g = porCat[c] || 0;
+      const lim = (estado.orcamentos[c] || 0) * n;
+      const aberta = estado.catAberta === c;
+      const detalhe = lim
+        ? `${barraOrc((g / lim) * 100, ritmo)}<small class="muted">${g <= lim ? `restam ${brl(lim - g)} de ${brl(lim)}` : `<span class="neg">passou ${brl(g - lim)}</span> do limite de ${brl(lim)}`}</small>`
+        : `<small class="muted">${((g / total) * 100).toFixed(0)}% dos gastos${n > 1 ? ` · ≈ ${brl(g / n)}/mês` : ''}</small>`;
+      return `<li class="cat-item ${aberta ? 'aberta' : ''}">
+        <button class="cat-linha" data-cat="${esc(c)}" aria-expanded="${aberta}">
+          <span class="avatar pequeno" style="--c:${corCategoria(c)}">${emoji(c)}</span>
+          <span class="cat-info"><span class="linha"><span>${esc(c)}</span><b>${brl(g)}</b></span>${detalhe}</span>
+          <svg class="seta-cat" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        ${aberta ? lancsDaCategoria(c, gastos, pendentes) : ''}
+      </li>`;
+    }).join('')}</ul>
+    ${cats.length > 6 ? `<button class="link centro" id="ver-cats">${recolhida ? `Mostrar todas (${cats.length})` : 'Mostrar menos'}</button>` : ''}`;
+}
+
+function lancsDaCategoria(cat, gastos, pendentes) {
+  const itens = gastos.filter((l) => l.categoria === cat).sort(ordemRecente);
+  if (!itens.length) return '<p class="vazio pequeno">Nenhum gasto nesta categoria no período.</p>';
+  const MAX = 40;
+  return `<ul class="cat-lancs">${itens.slice(0, MAX).map((l) => {
+    const tags = [
+      l.fixoId ? '🔁 fixo' : '',
+      pendentes.has(l.id) ? '≈ a confirmar' : '',
+      l.data > hoje() ? 'a vencer' : '',
+      l.origem === 'whatsapp' ? '💬' : '',
+    ].filter(Boolean).join(' · ');
+    return `<li><button data-id="${l.id}" class="${l.data > hoje() ? 'futuro' : ''}">
+      <span class="cl-data">${dataCurta(l.data)}</span>
+      <span class="cl-desc"><span>${esc(l.descricao || l.categoria)}</span>${tags ? `<small>${tags}</small>` : ''}</span>
+      <b>${pendentes.has(l.id) ? '≈ ' : ''}${brl(l.valor)}</b></button></li>`;
+  }).join('')}</ul>
+  ${itens.length > MAX ? `<p class="muted centro pequeno">+ ${itens.length - MAX} mais antigos</p>` : ''}`;
+}
+
+// Gasto acumulado dia a dia: este mês (com a projeção dos fixos a vencer) contra o mês anterior e o orçamento.
+function renderRitmo() {
+  const mes = estado.mes;
+  const N = diasNoMes(mes);
+  const hojeDia = mes === mesAtual() ? new Date().getDate() : mes < mesAtual() ? N : 0;
+  const acumulado = (m) => {
+    const porDia = Array(diasNoMes(m)).fill(0);
+    for (const l of gastosDe(lancsDoMes(m))) porDia[Number(l.data.slice(8)) - 1] += l.valor;
+    let s = 0;
+    return porDia.map((v) => (s += v));
+  };
+  const atual = acumulado(mes);
+  const mesAnt = somaMes(mes, -1);
+  const ant = acumulado(mesAnt);
+  const lim = Object.values(estado.orcamentos).filter((v) => v > 0).reduce((a, b) => a + b, 0);
+  if (!atual[N - 1] && !ant[ant.length - 1]) {
+    $('#ritmo').innerHTML = '<p class="vazio">Sem gastos para comparar ainda.</p>';
+    return;
+  }
+  const W = 300;
+  const H = 140;
+  const maxY = Math.max(atual[N - 1], ant[ant.length - 1], lim) * 1.08;
+  const x = (d) => ((Math.min(d, N) - 1) / (N - 1)) * W;
+  const y = (v) => H - (v / maxY) * H;
+  const linha = (arr, de, ate) => arr.slice(de - 1, ate).map((v, i) => `${i ? 'L' : 'M'}${x(de + i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const ate = Math.max(hojeDia, 1);
+  const area = hojeDia ? `${linha(atual, 1, hojeDia)} L${x(hojeDia).toFixed(1)},${H} L0,${H} Z` : '';
+
+  let frase = '';
+  if (hojeDia && hojeDia < N) {
+    const dif = atual[hojeDia - 1] - (ant[Math.min(hojeDia, ant.length) - 1] || 0);
+    frase = `Até o dia ${hojeDia}: <b>${brl(atual[hojeDia - 1])}</b>, ${Math.abs(dif) < 1 ? 'igual ao' : `<b class="${dif > 0 ? 'neg' : 'pos'}">${brl(Math.abs(dif))} ${dif > 0 ? 'a mais' : 'a menos'}</b> que no mesmo dia de`} ${mesCurto(mesAnt)}.`;
+  } else if (hojeDia === N) {
+    const dif = atual[N - 1] - ant[ant.length - 1];
+    frase = `Fechou em <b>${brl(atual[N - 1])}</b>${ant[ant.length - 1] ? `, <b class="${dif > 0 ? 'neg' : 'pos'}">${brl(Math.abs(dif))} ${dif > 0 ? 'a mais' : 'a menos'}</b> que ${mesCurto(mesAnt)}` : ''}.`;
+  }
+
+  $('#ritmo').innerHTML = `
+    <div class="ritmo-graf">
+      <span class="ritmo-max">${compacto(maxY / 1.08)}</span>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        ${lim ? `<line x1="0" x2="${W}" y1="${y(lim)}" y2="${y(lim)}" class="r-orc"/>` : ''}
+        <path d="${linha(ant, 1, ant.length)}" class="r-ant"/>
+        ${area ? `<path d="${area}" class="r-area"/>` : ''}
+        ${hojeDia ? `<path d="${linha(atual, 1, hojeDia)}" class="r-atual"/>` : ''}
+        ${hojeDia < N ? `<path d="${linha(atual, ate, N)}" class="r-prev"/>` : ''}
+      </svg>
+      ${hojeDia && hojeDia < N ? `<i class="r-ponto" style="left:${(x(hojeDia) / W) * 100}%;top:${(y(atual[hojeDia - 1]) / H) * 100}%"></i>` : ''}
+    </div>
+    <div class="ritmo-eixo"><span>1</span><span>${Math.round(N / 2)}</span><span>${N}</span></div>
+    <div class="legenda-linhas">
+      <span><i class="l-atual"></i>${cap(mesCurto(mes))}</span>
+      ${hojeDia < N ? '<span><i class="l-prev"></i>Fixos a vencer</span>' : ''}
+      <span><i class="l-ant"></i>${cap(mesCurto(mesAnt))}</span>
+      ${lim ? '<span><i class="l-orc"></i>Orçamento</span>' : ''}
+    </div>
+    ${frase ? `<p class="orc-sub">${frase}</p>` : ''}`;
+}
+
+function renderEvolucao() {
+  let meses;
+  if (estado.periodo === 'mes') meses = Array.from({ length: 12 }, (_, i) => somaMes(estado.mes, i - 11));
+  else if (estado.periodo === 'ano') meses = Array.from({ length: 12 }, (_, i) => `${estado.ano}-${pad(i + 1)}`);
+  else meses = mesesDoPeriodo();
+  const porMes = somar(gastosDe(estado.lancs), 'mes');
+  const valores = meses.map((m) => porMes[m] || 0);
+  const comDados = valores.filter((v) => v > 0);
+  if (!comDados.length) {
+    $('#evolucao').innerHTML = '<p class="vazio">Ainda não há meses para comparar.</p>';
+    return;
+  }
+  const max = Math.max(...valores);
+  const media = comDados.reduce((a, b) => a + b, 0) / comDados.length;
+  $('#evo-sub').textContent = `média ${brl(media)}`;
+  $('#evolucao').innerHTML = `<div class="evo ${meses.length > 12 ? 'rolavel' : ''}">
+    <i class="evo-media" style="bottom:calc(20px + (100% - 38px) * ${media / max})"></i>
+    ${meses.map((m, i) => `<button class="evo-col ${estado.periodo === 'mes' && m === estado.mes ? 'sel' : ''} ${m > mesAtual() ? 'futuro' : ''}"
+      data-mes="${m}" title="${cap(nomeMes(m))}: ${brl(valores[i])}">
+      <span class="evo-area"><small style="bottom:calc(${(valores[i] / max) * 100}% + 2px)">${valores[i] ? compacto(valores[i]) : ''}</small>
+        <span class="evo-barra" style="height:${(valores[i] / max) * 100}%"></span></span>
+      <span class="evo-rot">${mesCurto(m)}${m.endsWith('-01') || i === 0 ? `<br>${m.slice(2, 4)}` : ''}</span>
+    </button>`).join('')}
+  </div>`;
+  if (meses.length > 12) $('.evo').scrollLeft = 99999;
+}
+
+function renderComposicao(gastos, total, meses) {
+  if (!total) {
+    $('#composicao').innerHTML = '<p class="vazio">Nada por aqui ainda.</p>';
+    return;
+  }
+  const fixos = soma(gastos.filter((l) => l.fixoId));
+  const dia = total - fixos;
+  const n = meses.length;
+  const parte = (rot, v, classe) => `<li><i class="${classe}"></i><span>${rot}</span><b>${brl(v)}</b>
+    <small class="muted">${((v / total) * 100).toFixed(0)}%${n > 1 ? ` · ≈ ${brl(v / n)}/mês` : ''}</small></li>`;
+  $('#composicao').innerHTML = `
+    <div class="barra-empilhada">${fixos ? `<span class="c-fixo" style="flex:${fixos}"></span>` : ''}${dia ? `<span class="c-dia" style="flex:${dia}"></span>` : ''}</div>
+    <ul class="legenda">${parte('🔁 Fixos', fixos, 'c-fixo')}${parte('🛍️ Dia a dia', dia, 'c-dia')}</ul>`;
+}
+
+function renderMaiores(gastos) {
+  const maiores = gastos.filter((l) => !l.fixoId).sort((a, b) => b.valor - a.valor).slice(0, 5);
+  $('#maiores').innerHTML = maiores.map((l) => `<li><button class="item" data-id="${l.id}">
+      <span class="avatar" style="--c:${corCategoria(l.categoria)}">${emoji(l.categoria)}</span>
+      <span class="info"><span class="titulo">${esc(l.descricao || l.categoria)}</span>
+        <small>${esc(l.categoria)} · ${dataCurta(l.data)}</small></span>
+      <span class="valor">${brl(l.valor)}</span></button></li>`).join('')
+    || '<li class="vazio">Nenhum gasto do dia a dia no período.</li>';
+}
+
+function renderUltimos(gastos) {
+  const ultimos = gastos.filter((l) => !l.fixoId).sort(ordemRecente).slice(0, 5);
+  $('#ultimos').innerHTML = ultimos.map((l) => itemHtml(l)).join('')
+    || '<li class="vazio">Toque em <b>+</b> para lançar o primeiro gasto do mês.</li>';
+}
+
+function renderPessoas(gastos, total) {
+  if (!COM_PESSOAS) return;
   const porPessoa = Object.entries(somar(gastos, 'quem')).sort((a, b) => b[1] - a[1]);
   $('#pessoas-conteudo').innerHTML = porPessoa.length ? `
     <div class="barra-empilhada">${porPessoa.map(([p, v]) => `<span style="flex:${v};background:${corPessoa(p)}"></span>`).join('')}</div>
     <ul class="legenda">${porPessoa.map(([p, v]) => `<li><i style="background:${corPessoa(p)}"></i><span>${esc(p)}</span>
-      <b>${brl(v)}</b><small class="muted">${((v / t.gastos) * 100).toFixed(0)}%</small></li>`).join('')}</ul>`
+      <b>${brl(v)}</b><small class="muted">${((v / total) * 100).toFixed(0)}%</small></li>`).join('')}</ul>`
     : '<p class="vazio">Nada por aqui ainda.</p>';
-
-  // Últimos
-  const ultimos = atual.filter((l) => !l.fixoId).sort(ordemRecente).slice(0, 5);
-  $('#ultimos').innerHTML = ultimos.map((l) => itemHtml(l)).join('')
-    || '<li class="vazio">Toque em <b>+</b> para lançar o primeiro gasto do mês.</li>';
 }
+
 function ordemRecente(a, b) {
   return b.data.localeCompare(a.data) || (b.criadoEm?.seconds || 0) - (a.criadoEm?.seconds || 0);
 }
 
+$('#seg-periodo').onclick = (e) => {
+  const b = e.target.closest('[data-periodo]');
+  if (!b || b.dataset.periodo === estado.periodo) return;
+  estado.periodo = b.dataset.periodo;
+  estado.ano = Number(estado.mes.slice(0, 4));
+  estado.catAberta = null;
+  renderTudo();
+};
 $('#cat-conteudo').onclick = (e) => {
   if (e.target.closest('#ver-cats')) {
     estado.catsAbertas = !estado.catsAbertas;
-    renderResumo();
-    return;
+    return renderResumo();
   }
+  const lanc = e.target.closest('[data-id]');
+  if (lanc) return abrirSheet('lanc', estado.lancs.find((l) => l.id === lanc.dataset.id));
   const b = e.target.closest('[data-cat]');
   if (!b) return;
-  estado.filtro = { tipo: 'gasto', quem: '', categoria: b.dataset.cat, busca: '' };
-  $('#busca').value = '';
-  irPara('lancamentos');
+  estado.catAberta = estado.catAberta === b.dataset.cat ? null : b.dataset.cat;
+  renderResumo();
+};
+$('#evolucao').onclick = (e) => {
+  const b = e.target.closest('[data-mes]');
+  if (!b) return;
+  estado.periodo = 'mes';
+  if (b.dataset.mes === estado.mes) renderTudo();
+  else irParaMes(b.dataset.mes);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 $('#ultimos').onclick = abrirItemDaLista;
+$('#maiores').onclick = abrirItemDaLista;
 
 function renderLancamentos() {
   if (!estado.user) return;
