@@ -2,7 +2,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac, generateKeyPairSync } from 'node:crypto';
-import worker from './index.js';
+import worker, { comNove } from './index.js';
 import { paraCampos } from './firestore.js';
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -17,16 +17,17 @@ const env = {
 };
 const RAIZ = 'projects/proj/databases/(default)/documents';
 
-let banco; let commits; let respostas;
+let banco; let commits; let respostas; let destinos;
 const docApi = (caminho) => ({ name: `${RAIZ}/${caminho}`, fields: paraCampos(banco[caminho]) });
 
 beforeEach(() => {
-  banco = {}; commits = []; respostas = [];
+  banco = {}; commits = []; respostas = []; destinos = [];
   globalThis.fetch = async (url, op = {}) => {
     const json = (o, status = 200) => new Response(JSON.stringify(o), { status });
     if (url.startsWith('https://oauth2.googleapis.com')) return json({ access_token: 'acesso', expires_in: 3600 });
     if (url.startsWith('https://graph.facebook.com')) {
       respostas.push(JSON.parse(op.body).text.body);
+      destinos.push(JSON.parse(op.body).to);
       return json({});
     }
     assert.equal(op.headers.Authorization, 'Bearer acesso');
@@ -132,4 +133,13 @@ test('total do mês', async () => {
   await mensagem('10 pão', { id: 'wamid.1' });
   await mensagem('total');
   assert.match(respostas.at(-1), /\*R\$\s10,00\*/);
+});
+
+test('responde celular do Brasil com o 9, mesmo quando a Meta manda sem', async () => {
+  assert.equal(comNove('551699998888'), '5516999998888');
+  assert.equal(comNove('5516999998888'), '5516999998888');
+  assert.equal(comNove('551633334444'), '551633334444', 'fixo não ganha 9');
+  assert.equal(comNove('14155550000'), '14155550000', 'fora do Brasil não muda');
+  await mensagem('oi', { de: '551199998888' });
+  assert.deepEqual(destinos, ['5511999998888']);
 });

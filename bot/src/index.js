@@ -33,6 +33,13 @@ function mesAnterior(mes) {
 // Compara pelos 8 últimos dígitos: o WhatsApp às vezes manda números do Brasil sem o 9.
 const finalNumero = (n) => String(n).replace(/\D/g, '').slice(-8);
 
+// Celular do Brasil que chega sem o 9 (55 + DDD + 8 dígitos começando em 6-9) volta a ter o 9 na resposta;
+// sem isso a Meta não reconhece o destinatário e a mensagem não é entregue.
+export function comNove(numero) {
+  const n = String(numero).replace(/\D/g, '');
+  return /^55\d{2}[6-9]\d{7}$/.test(n) ? `${n.slice(0, 4)}9${n.slice(4)}` : n;
+}
+
 async function assinaturaValida(env, corpo, recebida) {
   const chave = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.WHATSAPP_APP_SECRET),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -49,7 +56,7 @@ function criarBot(env, db) {
     const r = await fetch(`${GRAPH}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messaging_product: 'whatsapp', to: para, type: 'text', text: { body: texto } }),
+      body: JSON.stringify({ messaging_product: 'whatsapp', to: comNove(para), type: 'text', text: { body: texto } }),
     });
     if (!r.ok) console.error('Falha ao responder no WhatsApp', r.status, await r.text());
   }
@@ -182,8 +189,14 @@ export default {
     }
     const tratar = criarBot(env, conectar(env.FIREBASE_SERVICE_ACCOUNT));
     const json = JSON.parse(new TextDecoder().decode(corpo));
-    const mensagens = (json.entry || []).flatMap((e) => e.changes || []).flatMap((c) => c.value?.messages || []);
+    const valores = (json.entry || []).flatMap((e) => e.changes || []).map((c) => c.value || {});
+    // A Meta avisa depois se uma resposta não pôde ser entregue; sem registrar isso a falha passa em silêncio.
+    for (const s of valores.flatMap((v) => v.statuses || []).filter((s) => s.status === 'failed')) {
+      console.error('WhatsApp não entregou a resposta', finalNumero(s.recipient_id), JSON.stringify(s.errors));
+    }
+    const mensagens = valores.flatMap((v) => v.messages || []);
     for (const msg of mensagens) {
+      console.log('Mensagem recebida', msg.type, finalNumero(msg.from));
       try {
         await tratar(msg);
       } catch (e) {
