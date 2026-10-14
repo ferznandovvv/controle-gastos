@@ -1,7 +1,8 @@
-# Publica o app no Firebase sempre que algo entra no branch main.
-# Precisa do segredo FIREBASE_SERVICE_ACCOUNT (chave JSON de uma conta de serviço).
-# O bot (functions) fica de fora até o faturamento do Google estar ativo.
-name: Publicar no Firebase
+# Publica tudo sempre que algo entra no branch main:
+#   app   → Firebase Hosting + regras do Firestore (precisa do segredo FIREBASE_SERVICE_ACCOUNT)
+#   bot   → Cloudflare Workers (precisa de CLOUDFLARE_API_TOKEN; os segredos do WhatsApp vão junto)
+# Cada parte só é publicada quando os segredos dela estão cadastrados no GitHub.
+name: Publicar
 
 on:
   push:
@@ -13,27 +14,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publicar:
+  app:
     runs-on: ubuntu-latest
     env:
       TEM_CHAVE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
     steps:
       - name: Avisar se falta a chave
         if: env.TEM_CHAVE != 'true'
-        run: echo "::warning::Segredo FIREBASE_SERVICE_ACCOUNT não cadastrado; nada foi publicado."
+        run: echo "::warning::Segredo FIREBASE_SERVICE_ACCOUNT não cadastrado; o app não foi publicado."
 
       - uses: actions/checkout@v4
         if: env.TEM_CHAVE == 'true'
-
-      - uses: actions/setup-node@v4
-        if: env.TEM_CHAVE == 'true'
-        with:
-          node-version: 22
-
-      - name: Testes do bot
-        if: env.TEM_CHAVE == 'true'
-        working-directory: functions
-        run: node --test
 
       - uses: google-github-actions/auth@v2
         if: env.TEM_CHAVE == 'true'
@@ -43,3 +34,50 @@ jobs:
       - name: Publicar site e regras do banco
         if: env.TEM_CHAVE == 'true'
         run: npx --yes firebase-tools@14 deploy --only hosting,firestore:rules --project gastos-pessoais-8b555 --non-interactive
+
+  bot:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bot
+    env:
+      TEM_CHAVE: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Testes do bot
+        run: node --test
+
+      - name: Avisar se falta a chave
+        if: env.TEM_CHAVE != 'true'
+        run: echo "::warning::Segredo CLOUDFLARE_API_TOKEN não cadastrado; o bot não foi publicado."
+
+      - name: Publicar o bot
+        if: env.TEM_CHAVE == 'true'
+        run: npx --yes wrangler@4 deploy
+
+      - name: Enviar os segredos do bot
+        if: env.TEM_CHAVE == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET }}
+          WHATSAPP_VERIFY_TOKEN: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_NUMEROS_PERMITIDOS: ${{ secrets.WHATSAPP_NUMEROS_PERMITIDOS }}
+        run: |
+          node -e '
+            const nomes = ["FIREBASE_SERVICE_ACCOUNT", "WHATSAPP_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN",
+              "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_NUMEROS_PERMITIDOS"];
+            const s = Object.fromEntries(nomes.filter((n) => process.env[n]).map((n) => [n, process.env[n]]));
+            console.log("Enviando:", Object.keys(s).join(", ") || "nenhum");
+            require("fs").writeFileSync(process.env.RUNNER_TEMP + "/segredos.json", JSON.stringify(s), { mode: 0o600 });
+          '
+          if [ "$(cat "$RUNNER_TEMP/segredos.json")" != "{}" ]; then npx --yes wrangler@4 secret bulk "$RUNNER_TEMP/segredos.json"; fi
+          rm -f "$RUNNER_TEMP/segredos.json"

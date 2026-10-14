@@ -1,20 +1,23 @@
 {
   "hosting": {
     "public": "public",
-    "ignore": ["firebase.json", "**/.*"],
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
     "headers": [
       {
         "source": "**/*.@(html|js|css|json)",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ]
   },
   "firestore": {
     "rules": "firestore.rules"
-  },
-  "functions": {
-    "source": "functions",
-    "runtime": "nodejs22",
-    "ignore": ["node_modules", "*.test.js", ".env*", "*.log"]
   }
 }
