@@ -51,6 +51,18 @@ export function escolherCategoria(descricao, categorias) {
   return categorias.find((c) => normal(c) === 'outros') || categorias[categorias.length - 1] || 'Outros';
 }
 
+// "Mercado arroz e carne" na categoria Mercado vira só "Arroz e carne": o nome da categoria no começo
+// só servia para escolhê-la. Palavras-chave ficam ("Pizza com a família" diz mais que "Com a família"),
+// e se não sobrar nada a descrição fica como veio.
+export function observacao(descricao, categoria) {
+  const nome = normal(categoria);
+  const texto = normal(descricao);
+  if (!nome || !(texto === nome || texto.startsWith(`${nome} `))) return descricao;
+  const resto = String(descricao).trim().split(/\s+/).slice(nome.split(' ').length).join(' ')
+    .replace(/^((de|do|da|dos|das|no|na|em|com|pra|para)\s+)+/i, '').trim();
+  return resto ? resto[0].toUpperCase() + resto.slice(1) : descricao;
+}
+
 // Nomes diferentes para a mesma conta da casa (inclui as concessionárias mais comuns).
 const SINONIMOS = [
   ['luz', 'energia', 'conta de luz', 'eletricidade', 'enel', 'cemig', 'light', 'cpfl', 'copel', 'celesc', 'coelba',

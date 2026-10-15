@@ -10,7 +10,7 @@
 // O Telegram é avisado do endereço do bot pela publicação (.github/workflows/publicar.yml), com um segredo
 // derivado do token (segredoWebhook) que volta em cada chamada e prova que ela veio do Telegram.
 import { conectar } from './firestore.js';
-import { interpretar, escolherCategoria, mesmaConta, normal } from './interpretar.js';
+import { interpretar, escolherCategoria, observacao, mesmaConta, normal } from './interpretar.js';
 
 // Mesma lista padrão do app (public/app.js), usada enquanto ninguém editar as categorias.
 const CAT_PADRAO = ['Mercado', 'Bebê', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
@@ -98,12 +98,13 @@ function criarBot(db, responder) {
 
     const config = (await db.ler('config/geral'))?.dados || {};
     const categoria = escolherCategoria(r.descricao, config.catGasto?.length ? config.catGasto : CAT_PADRAO);
+    const descricao = observacao(r.descricao, categoria);
     try {
       // Um id fixo por mensagem evita duplicar quando a mesma mensagem chega de novo.
       await db.gravar([{
         criar: `lancamentos/${idLancamento}`,
         dados: {
-          tipo: 'gasto', valor: r.valor, categoria, descricao: r.descricao, quem: '', data, mes,
+          tipo: 'gasto', valor: r.valor, categoria, descricao, quem: '', data, mes,
           origem, criadoPor: autor,
         },
         agoraEm: 'criadoEm',
@@ -112,7 +113,7 @@ function criarBot(db, responder) {
       if (e.jaExiste) return; // reenvio da mesma mensagem
       throw e;
     }
-    const extra = r.descricao && normal(r.descricao) !== normal(categoria) ? ` · ${r.descricao}` : '';
+    const extra = descricao && normal(descricao) !== normal(categoria) ? ` · ${descricao}` : '';
     const quando = ['', ' (ontem)', ' (anteontem)'][r.diasAtras];
     return responder(`✅ ${brl(r.valor)} em *${categoria}*${extra}${quando}\n`
       + `Total de ${nomeMes(mes)}: ${brl(await totalDoMes(mes))}\n\nErrou? Mande *desfazer*.`);

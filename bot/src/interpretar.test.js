@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { interpretar, escolherCategoria, mesmaConta } from './interpretar.js';
+import { interpretar, escolherCategoria, observacao, mesmaConta } from './interpretar.js';
 
 const CATS = ['Mercado', 'Bebê', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
   'Viagem', 'Compras', 'Roupas', 'Beleza', 'Presentes', 'Educação', 'Assinaturas', 'Pets', 'Outros'];
@@ -58,4 +58,24 @@ test('categorias', () => {
   assert.equal(escolherCategoria('Hotel praia', CATS), 'Viagem');
   assert.equal(escolherCategoria('Pao de queijo', CATS), 'Outros');
   assert.equal(escolherCategoria('', CATS), 'Outros');
+});
+
+test('observação sem a palavra que só indicava a categoria', () => {
+  const casos = [
+    ['45,90 mercado arroz e carne', 'Mercado', 'Arroz e carne'],
+    ['120 farmácia remédio do bebê', 'Bebê', 'Farmácia remédio do bebê'],
+    ['120 farmácia dipirona', 'Saúde', 'Farmácia dipirona'],
+    ['ontem 80 restaurante aniversário da mãe', 'Restaurante', 'Aniversário da mãe'],
+    ['45,90 mercado', 'Mercado', 'Mercado'],
+    ['uber 23', 'Transporte', 'Uber'],
+    ['50 presentes aniversário do João', 'Presentes', 'Aniversário do João'],
+    ['30 bebê fraldas', 'Bebê', 'Fraldas'],
+    ['30 pizza com a família', 'Restaurante', 'Pizza com a família'],
+    ['200 contas da casa conserto do chuveiro', 'Contas da casa', 'Conserto do chuveiro'],
+  ];
+  for (const [texto, categoria, esperado] of casos) {
+    const r = interpretar(texto);
+    assert.equal(escolherCategoria(r.descricao, CATS), categoria, texto);
+    assert.equal(observacao(r.descricao, categoria), esperado, texto);
+  }
 });
