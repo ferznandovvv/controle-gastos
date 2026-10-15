@@ -1,9 +1,12 @@
 // Rede primeiro, cache como reserva: o app abre mesmo sem internet
 // e sempre pega a versão nova quando há conexão.
-const CACHE = 'gastos-v1';
+const CACHE = 'gastos-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', (e) => e.waitUntil(
+  caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    .then(() => self.clients.claim()),
+));
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
@@ -15,7 +18,9 @@ self.addEventListener('fetch', (e) => {
   if (!estatico || url.pathname.startsWith('/__/')) return;
 
   e.respondWith(
-    fetch(req)
+    // no-cache: sempre confere com o servidor (resposta 304 quando nada mudou), para a página e o
+    // código nunca ficarem de versões diferentes depois de uma atualização.
+    fetch(req, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) {
           const copia = res.clone();

@@ -1,5 +1,15 @@
 import { firebaseConfig, EMAILS_PERMITIDOS } from './firebase-config.js';
 
+// Página guardada de uma versão anterior com o código novo: recarrega uma vez para pegar a página nova,
+// em vez de deixar botões sem função.
+if (!document.getElementById('chips-parcelas')) {
+  let recarregou = false;
+  try { recarregou = sessionStorage.getItem('recarregouVersao') === '1'; sessionStorage.setItem('recarregouVersao', '1'); } catch { /* sem armazenamento */ }
+  if (!recarregou) location.reload();
+} else {
+  try { sessionStorage.removeItem('recarregouVersao'); } catch { /* sem armazenamento */ }
+}
+
 // ?demo em localhost usa um Firebase falso em memória, para testar a interface.
 const DEMO = new URLSearchParams(location.search).has('demo') && ['localhost', '127.0.0.1'].includes(location.hostname);
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
@@ -360,6 +370,11 @@ function titulo(l) {
 function dividirParcelas(centavos, n) {
   const base = Math.floor(centavos / n);
   return Array.from({ length: n }, (_, i) => (i ? base : centavos - base * (n - 1)));
+}
+// Id aleatório; crypto.randomUUID falta em navegadores um pouco mais antigos.
+function novoId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 // Mesmo dia, k meses depois (dia 31 vira o último dia dos meses mais curtos).
 function dataDaParcela(data, k) {
@@ -736,7 +751,7 @@ const form = $('#form-item');
 const inpValor = $('#valor');
 let edicao = null;
 // rep: repetição escolhida ao lançar ('' | 'semanal' | 'mensal'); freq/dow: frequência de um fixo.
-const sel = { tipo: 'gasto', categoria: '', quem: '', centavos: 0, rep: '', freq: 'mensal', dow: 5 };
+const sel = { tipo: 'gasto', categoria: '', quem: '', centavos: 0, rep: '', parcelas: 1, freq: 'mensal', dow: 5 };
 
 function pessoaPadrao() {
   const ultima = lerLocal('ultimaPessoa');
@@ -762,7 +777,7 @@ function abrirSheet(modo, item) {
 
   $('#campo-data').hidden = modo !== 'lanc';
   $('#campo-freq').hidden = modo !== 'fixo';
-  form.parcelas.value = '1';
+  sel.parcelas = 1;
   const parcelado = modo === 'lanc' && item?.parcelaId && item.parcelas > 1;
   $('#btn-excluir-parcelas').hidden = !parcelado;
   if (parcelado) $('#btn-excluir-parcelas').textContent = `Apagar as ${item.parcelas} parcelas de ${item.descricao || item.categoria}`;
@@ -808,10 +823,11 @@ function renderSheet() {
     data-rep="${v}" aria-pressed="${sel.rep === v}">${rot}</button>`).join('');
 
   // Parcelas (ao lançar) e repetir não andam juntos: um esconde o outro.
-  const nParcelas = Number(form.parcelas.value) || 1;
   const novoLanc = edicao.modo === 'lanc' && !edicao.item;
-  $('#campo-repetir').hidden = !novoLanc || nParcelas > 1;
+  $('#campo-repetir').hidden = !novoLanc || sel.parcelas > 1;
   $('#campo-parcelas').hidden = !novoLanc || !!sel.rep;
+  $('#chips-parcelas').innerHTML = OPCOES_PARCELAS.map((n) => `<button type="button" class="chip ${sel.parcelas === n ? 'ativo' : ''}"
+    data-parcelas="${n}" aria-pressed="${sel.parcelas === n}">${n > 1 ? `${n}x` : 'À vista'}</button>`).join('');
   renderInfoParcelas();
 
   // Frequência (fixo)
@@ -840,8 +856,9 @@ $('#campo-semana').onclick = (e) => {
   renderSheet();
 };
 
+const OPCOES_PARCELAS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24];
 function renderInfoParcelas() {
-  const n = Number(form.parcelas.value) || 1;
+  const n = sel.parcelas;
   if (n < 2 || !sel.centavos) {
     $('#parcelas-info').textContent = n < 2 ? '' : 'Coloque o valor total da compra';
     return;
@@ -851,8 +868,12 @@ function renderInfoParcelas() {
   $('#parcelas-info').textContent = `${n}x de ${brl(partes[n - 1] / 100)}${partes[0] !== partes[n - 1] ? ` (1ª ${brl(partes[0] / 100)})` : ''}`
     + ` · última em ${mesCurto(ultima.slice(0, 7))}/${ultima.slice(2, 4)}`;
 }
-form.parcelas.innerHTML = Array.from({ length: 24 }, (_, i) => `<option value="${i + 1}">${i ? `${i + 1}x` : 'À vista'}</option>`).join('');
-form.parcelas.onchange = renderSheet;
+$('#chips-parcelas').onclick = (e) => {
+  const b = e.target.closest('[data-parcelas]');
+  if (!b) return;
+  sel.parcelas = Number(b.dataset.parcelas);
+  renderSheet();
+};
 
 function mostrarValor() {
   inpValor.value = fmtCent(sel.centavos);
@@ -984,10 +1005,10 @@ form.onsubmit = (e) => {
       const extra = item.fixoId ? { confirmado: true } : {};
       gravar(updateDoc(doc(db, 'lancamentos', item.id), { ...base, data, mes, ...extra }));
       toast('Alterações salvas');
-    } else if (Number(form.parcelas.value) > 1) {
+    } else if (sel.parcelas > 1) {
       // Uma parcela por mês, no mesmo dia, todas ligadas pelo parcelaId.
-      const n = Number(form.parcelas.value);
-      const parcelaId = crypto.randomUUID();
+      const n = sel.parcelas;
+      const parcelaId = novoId();
       const b = writeBatch(db);
       dividirParcelas(sel.centavos, n).forEach((c, i) => {
         const d = dataDaParcela(data, i);
