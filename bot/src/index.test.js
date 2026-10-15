@@ -230,3 +230,32 @@ test('total ignora lançamento de fixo com data futura, como o app', async () =>
   await mensagem('total');
   assert.match(respostas.at(-1), /\*R\$\s30,00\*/);
 });
+
+test('Atalho responde com aviso quando o banco não responde, em vez de ficar carregando', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, op) => {
+    if (url.includes('firestore.googleapis.com')) {
+      return new Promise((_, rejeitar) => op.signal.addEventListener('abort', () => rejeitar(op.signal.reason)));
+    }
+    return original(url, op);
+  };
+  const real = AbortSignal.timeout;
+  // O timer do AbortSignal.timeout do Node não segura o processo vivo; aqui um comum, de 50 ms.
+  AbortSignal.timeout = () => {
+    const c = new AbortController();
+    setTimeout(() => c.abort(new DOMException('tempo esgotado', 'TimeoutError')), 50);
+    return c.signal;
+  };
+  try {
+    const r = await worker.fetch(new Request('https://bot.example/atalho/chave-f', { method: 'POST', body: '18,99 marmita ontem' }), env);
+    assert.equal(r.status, 500);
+    assert.match(await r.text(), /Não consegui lançar agora/);
+  } finally {
+    AbortSignal.timeout = real;
+  }
+});
+
+test('marmita cai em Restaurante', async () => {
+  const r = await worker.fetch(new Request('https://bot.example/atalho/chave-f', { method: 'POST', body: '18,99 marmita ontem' }), env);
+  assert.match(await r.text(), /R\$\s18,99 em Restaurante · Marmita \(ontem\)/);
+});

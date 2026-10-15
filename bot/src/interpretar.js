@@ -13,7 +13,7 @@ const PALAVRAS = {
   viagem: ['viagem', 'hotel', 'pousada', 'passagem', 'passagens', 'airbnb', 'aeroporto', 'hospedagem'],
   mercado: ['mercado', 'supermercado', 'feira', 'hortifruti', 'sacolao', 'padaria', 'acougue', 'atacadao',
     'assai', 'carrefour', 'extra', 'pao de acucar', 'compras do mes'],
-  restaurante: ['restaurante', 'almoco', 'janta', 'jantar', 'lanche', 'pizza', 'ifood', 'hamburguer',
+  restaurante: ['restaurante', 'marmita', 'marmitex', 'quentinha', 'almoco', 'janta', 'jantar', 'lanche', 'pizza', 'ifood', 'hamburguer',
     'burguer', 'sushi', 'bar', 'cafe', 'cafeteria', 'sorvete', 'acai', 'delivery', 'mcdonalds', 'bk'],
   transporte: ['uber', '99', 'gasolina', 'combustivel', 'etanol', 'alcool', 'posto', 'estacionamento',
     'onibus', 'metro', 'pedagio', 'taxi', 'oficina', 'mecanico', 'lavagem', 'ipva', 'seguro do carro'],

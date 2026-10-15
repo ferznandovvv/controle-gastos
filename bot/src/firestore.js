@@ -2,6 +2,8 @@
 // A biblioteca firebase-admin não roda no Cloudflare Workers, por isso o acesso é direto.
 
 const ESCOPO = 'https://www.googleapis.com/auth/datastore';
+// Sem limite, uma chamada presa ao Google deixaria o Atalho girando até o iPhone desistir.
+const LIMITE_MS = 10000;
 let cacheToken = { chave: '', token: '', expira: 0 };
 
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)))
@@ -17,6 +19,7 @@ async function tokenDeAcesso(conta) {
     + b64urlTexto(JSON.stringify({ iss: conta.client_email, scope: ESCOPO, aud: conta.token_uri, iat: agora, exp: agora + 3600 }));
   const assinatura = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', chave, new TextEncoder().encode(corpo));
   const r = await fetch(conta.token_uri, {
+    signal: AbortSignal.timeout(LIMITE_MS),
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${corpo}.${b64url(assinatura)}` }),
@@ -65,6 +68,7 @@ export function conectar(chaveJson) {
 
   async function chamar(caminho, corpo) {
     const r = await fetch(`${url}${caminho}`, {
+      signal: AbortSignal.timeout(LIMITE_MS),
       method: corpo ? 'POST' : 'GET',
       headers: { Authorization: `Bearer ${await tokenDeAcesso(conta)}`, 'Content-Type': 'application/json' },
       body: corpo && JSON.stringify(corpo),
