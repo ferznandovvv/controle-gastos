@@ -131,8 +131,6 @@ main { padding: 4px 16px 0; }
 .painel-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .orc-total { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
 .orc-total span { font-size: .95rem; }
-.orc-sub { font-size: .9rem; color: var(--muted); }
-.orc-sub b { color: var(--texto); }
 .cta { display: flex; align-items: center; gap: 12px; }
 .cta > div { flex: 1; display: grid; gap: 2px; }
 .cta small { font-size: .82rem; }
@@ -140,20 +138,15 @@ main { padding: 4px 16px 0; }
 
 /* Barras */
 .barra { position: relative; display: block; height: 6px; background: var(--sup-2); border-radius: 99px; }
-.barra.grossa { height: 10px; }
 .barra > span { display: block; height: 100%; background: var(--primaria); border-radius: 99px; transition: width .4s; }
 .barra.alerta > span { background: var(--alerta); }
 .barra.estourou > span { background: var(--perigo); }
-.marca-ritmo { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--texto); opacity: .55; border-radius: 2px; }
-.marca-legenda { display: inline-block; width: 2px; height: 10px; background: var(--texto); opacity: .55; vertical-align: -1px; }
 
 /* Período do resumo */
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--sup-2); border-radius: 12px; padding: 3px; }
 .seg button { padding: 8px; border-radius: 9px; font-weight: 600; font-size: .92rem; color: var(--muted); transition: background .15s, color .15s; }
 .seg button.ativo { background: var(--sup); color: var(--texto); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
 
-.orc-bloco { display: grid; gap: 8px; padding: 12px; background: var(--sup-2); border-radius: 14px; }
-.orc-bloco .linha { flex-wrap: wrap; }
 
 /* Categoria expansível */
 .cat-item + .cat-item { border-top: 1px solid var(--borda); }

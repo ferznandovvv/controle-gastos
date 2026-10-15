@@ -252,13 +252,14 @@ async function limparFuturos(fixoId, manterFixo = true) {
   return futuros.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-// Cria, para o mês em exibição, os lançamentos dos fixos que ainda não foram gerados.
+// Cria, para o mês em exibição, os lançamentos dos fixos que já venceram e ainda não foram gerados.
+// Cada fixo entra só no dia em que debita, nunca antes.
 async function gerarFixos() {
   const mes = estado.mes;
   if (mes > mesAtual()) return;
   for (const f of estado.fixos) {
     if (f.ativo === false || mes < f.inicio) continue;
-    const novas = ocorrencias(f, mes).filter((o) => !(f.gerados || []).includes(o.chave));
+    const novas = ocorrencias(f, mes).filter((o) => o.data <= hoje() && !(f.gerados || []).includes(o.chave));
     if (!novas.length) continue;
     const b = writeBatch(db);
     for (const o of novas) {
@@ -393,9 +394,11 @@ function mesesDoPeriodo() {
   for (let m = primeiro; m <= atual; m = somaMes(m, 1)) r.push(m);
   return r;
 }
+// Lançamentos de fixo com data futura sobraram da versão que lançava o mês inteiro de uma vez: não contam.
+function contaNoTotal(l) { return !(l.fixoId && l.data > hoje()); }
 function gastosDoPeriodo(meses) {
   const set = new Set(meses);
-  return gastosDe(estado.lancs.filter((l) => set.has(l.mes)));
+  return gastosDe(estado.lancs.filter((l) => set.has(l.mes) && contaNoTotal(l)));
 }
 
 function renderResumo() {
@@ -422,12 +425,9 @@ function renderHero(gastos, total, meses) {
   };
   if (estado.periodo === 'mes') {
     const nome = nomeMes(estado.mes, { month: 'long' });
-    // Fixos já são lançados para o mês inteiro; o que tem data depois de hoje ainda vai vencer.
-    const aVencer = soma(gastos.filter((l) => l.data > hoje()));
-    if (aVencer) return preencher(`Previsto para ${nome}`, 'Já gasto', brl(total - aVencer), 'Fixos a vencer', brl(aVencer));
     const mesAnt = somaMes(estado.mes, -1);
     const dias = estado.mes === mesAtual() ? new Date().getDate() : estado.mes < mesAtual() ? diasNoMes(estado.mes) : 1;
-    return preencher(`Gastos de ${nome}`, cap(nomeMes(mesAnt, { month: 'long' })), brl(soma(gastosDe(lancsDoMes(mesAnt)))),
+    return preencher(`Gastos de ${nome}`, cap(nomeMes(mesAnt, { month: 'long' })), brl(soma(gastosDoPeriodo([mesAnt]))),
       'Média por dia', brl(total / dias));
   }
   const [mesTop, vTop] = Object.entries(somar(gastos, 'mes')).sort((a, b) => b[1] - a[1])[0] || [];
@@ -436,43 +436,22 @@ function renderHero(gastos, total, meses) {
     'Mês mais caro', mesTop ? `${cap(mesCurto(mesTop))} · ${brl(vTop)}` : '—');
 }
 
-// Barra de orçamento; a marca mostra quanto do mês já passou (onde o gasto "deveria" estar).
-function barraOrc(pct, ritmo, grossa = false) {
-  const adiantado = ritmo != null ? pct > ritmo + 10 : pct > 85;
-  const classe = pct > 100 ? 'estourou' : adiantado ? 'alerta' : '';
-  return `<span class="barra ${grossa ? 'grossa' : ''} ${classe}"><span style="width:${Math.min(pct, 100)}%"></span>
-    ${ritmo != null ? `<i class="marca-ritmo" style="left:${ritmo}%"></i>` : ''}</span>`;
+// Barra do limite da categoria: amarela perto do limite, vermelha quando passa.
+function barraOrc(pct) {
+  const classe = pct > 100 ? 'estourou' : pct > 85 ? 'alerta' : '';
+  return `<span class="barra ${classe}"><span style="width:${Math.min(pct, 100)}%"></span></span>`;
 }
 
 function renderCategorias(gastos, total, meses) {
   const n = meses.length;
   const porCat = somar(gastos, 'categoria');
   const limites = Object.entries(estado.orcamentos).filter(([, v]) => v > 0);
-  const ehAtual = estado.periodo === 'mes' && estado.mes === mesAtual();
-  const ritmo = ehAtual ? (new Date().getDate() / diasNoMes(estado.mes)) * 100 : null;
   $('#cat-sub').textContent = n > 1 ? `${n} meses` : '';
 
-  // Orçamento do período = limite mensal × número de meses.
-  let orc = '';
-  if (limites.length) {
-    const totalLim = limites.reduce((s, [, v]) => s + v, 0) * n;
-    const usado = limites.reduce((s, [c]) => s + (porCat[c] || 0), 0);
-    const resta = totalLim - usado;
-    let sub;
-    if (resta < 0) sub = `Passou <b class="neg">${brl(-resta)}</b> do planejado`;
-    else if (ehAtual) {
-      const diasRest = diasNoMes(estado.mes) - new Date().getDate() + 1;
-      sub = `Restam <b>${brl(resta)}</b> · dá para gastar <b>${brl(resta / diasRest)}</b> por dia`;
-    } else sub = `Sobrou <b>${brl(resta)}</b> do planejado`;
-    orc = `<div class="orc-bloco">
-      <div class="linha"><span class="muted">Orçamento</span><span><b>${brl(usado)}</b><span class="muted"> de ${brl(totalLim)}</span></span></div>
-      ${barraOrc((usado / totalLim) * 100, ritmo, true)}
-      <p class="orc-sub">${sub}${ritmo != null ? ' · <i class="marca-legenda"></i> hoje' : ''}</p></div>`;
-  } else if (estado.periodo === 'mes') {
-    orc = `<div class="cta"><span class="cta-emoji">🎯</span><div><b>Defina um orçamento</b>
-      <small class="muted">Escolha um limite por categoria e acompanhe quanto ainda dá para gastar.</small></div>
-      <button class="btn pequeno" data-ir="ajustes">Definir</button></div>`;
-  }
+  // Sem nenhum limite ainda, um convite para definir; o limite do período é o mensal × número de meses.
+  const orc = !limites.length && estado.periodo === 'mes' ? `<div class="cta"><span class="cta-emoji">🎯</span><div><b>Defina limites</b>
+      <small class="muted">Escolha um limite por categoria e veja quanto falta para chegar nele.</small></div>
+      <button class="btn pequeno" data-ir="ajustes">Definir</button></div>` : '';
 
   const cats = [...new Set([...Object.keys(porCat), ...limites.map(([c]) => c)])]
     .sort((a, b) => (porCat[b] || 0) - (porCat[a] || 0) || (estado.orcamentos[b] || 0) - (estado.orcamentos[a] || 0));
@@ -497,7 +476,7 @@ function renderCategorias(gastos, total, meses) {
       const lim = (estado.orcamentos[c] || 0) * n;
       const aberta = estado.catAberta === c;
       const detalhe = lim
-        ? `${barraOrc((g / lim) * 100, ritmo)}<small class="muted">${g <= lim ? `faltam <b>${brl(lim - g)}</b> para o limite de ${brl(lim)}` : `<span class="neg">passou ${brl(g - lim)}</span> do limite de ${brl(lim)}`}</small>`
+        ? `${barraOrc((g / lim) * 100)}<small class="muted">${g <= lim ? `faltam <b>${brl(lim - g)}</b> para o limite de ${brl(lim)}` : `<span class="neg">passou ${brl(g - lim)}</span> do limite de ${brl(lim)}`}</small>`
         : `<small class="muted">${((g / total) * 100).toFixed(0)}% dos gastos${n > 1 ? ` · ≈ ${brl(g / n)}/mês` : ''}</small>`;
       return `<li class="cat-item ${aberta ? 'aberta' : ''}">
         <button class="cat-linha" data-cat="${esc(c)}" aria-expanded="${aberta}">
@@ -533,7 +512,7 @@ function renderEvolucao() {
   if (estado.periodo === 'mes') meses = Array.from({ length: 12 }, (_, i) => somaMes(estado.mes, i - 11));
   else if (estado.periodo === 'ano') meses = Array.from({ length: 12 }, (_, i) => `${estado.ano}-${pad(i + 1)}`);
   else meses = mesesDoPeriodo();
-  const porMes = somar(gastosDe(estado.lancs), 'mes');
+  const porMes = somar(gastosDe(estado.lancs.filter(contaNoTotal)), 'mes');
   const valores = meses.map((m) => porMes[m] || 0);
   const comDados = valores.filter((v) => v > 0);
   if (!comDados.length) {
@@ -613,7 +592,7 @@ function renderLancamentos() {
 
   const busca = normal(f.busca);
   const filtrados = lancsDoMes(estado.mes)
-    .filter((l) => (!f.tipo || l.tipo === f.tipo) && (!f.categoria || l.categoria === f.categoria) && (!f.quem || l.quem === f.quem))
+    .filter((l) => contaNoTotal(l) && (!f.tipo || l.tipo === f.tipo) && (!f.categoria || l.categoria === f.categoria) && (!f.quem || l.quem === f.quem))
     .filter((l) => !busca || normal(`${l.descricao} ${l.categoria} ${l.quem}`).includes(busca))
     .sort(ordemRecente);
   // Fixos ficam fora da lista (estão na aba Fixos), mas aparecem resumidos no topo.
