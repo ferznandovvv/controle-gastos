@@ -63,13 +63,13 @@
         <div id="insights" class="insights"></div>
 
         <div class="painel">
-          <div class="painel-cab"><h2>Por categoria</h2><span id="cat-sub" class="muted"></span></div>
-          <div id="cat-conteudo"></div>
+          <div class="painel-cab"><h2>Últimos lançamentos</h2><button class="link" data-ir="lancamentos">Ver todos</button></div>
+          <ul id="ultimos" class="itens"></ul>
         </div>
 
-        <div class="painel so-mes">
-          <div class="painel-cab"><h2>Ritmo do mês</h2><span class="muted">gasto acumulado</span></div>
-          <div id="ritmo"></div>
+        <div class="painel">
+          <div class="painel-cab"><h2>Por categoria</h2><span id="cat-sub" class="muted"></span></div>
+          <div id="cat-conteudo"></div>
         </div>
 
         <div class="painel">
@@ -80,16 +80,6 @@
         <div class="painel">
           <div class="painel-cab"><h2>Fixos × dia a dia</h2></div>
           <div id="composicao"></div>
-        </div>
-
-        <div class="painel">
-          <div class="painel-cab"><h2>Maiores gastos</h2><span class="muted">sem fixos</span></div>
-          <ul id="maiores" class="itens"></ul>
-        </div>
-
-        <div class="painel so-mes">
-          <div class="painel-cab"><h2>Últimos lançamentos</h2><button class="link" data-ir="lancamentos">Ver todos</button></div>
-          <ul id="ultimos" class="itens"></ul>
         </div>
 
         <div class="painel so-pessoas">
@@ -219,7 +209,6 @@
         <div id="campo-semana" class="semana"></div>
       </div>
 
-      <label class="toggle" id="campo-variavel"><span>Valor muda todo mês<small>Luz, água, internet… Você confirma o valor quando a conta chegar.</small></span><input type="checkbox" name="variavel"><i></i></label>
       <label class="toggle" id="campo-ativo"><span>Ativo</span><input type="checkbox" name="ativo"><i></i></label>
       <p id="aviso" class="ajuda"></p>
 

@@ -130,8 +130,6 @@ main { padding: 4px 16px 0; }
 .insight { font-size: .82rem; padding: 6px 12px; border-radius: 999px; background: var(--sup); border: 1px solid var(--borda); }
 .insight.bom { color: var(--pos); }
 .insight.ruim { color: var(--neg); }
-button.insight.alerta { color: var(--alerta); border-color: currentColor; font-weight: 600; }
-.itens.pendentes { border-color: var(--alerta); border-style: dashed; }
 
 /* Painéis */
 .painel { background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); padding: 16px; box-shadow: var(--sombra); display: grid; gap: 12px; }
@@ -179,23 +177,6 @@ button.insight.alerta { color: var(--alerta); border-color: currentColor; font-w
 .centro { text-align: center; }
 
 /* Ritmo do mês */
-.ritmo-graf { position: relative; height: 150px; margin-top: 4px; }
-.ritmo-graf svg { width: 100%; height: 100%; display: block; overflow: visible; }
-.ritmo-graf path, .ritmo-graf line { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
-.r-atual { stroke: var(--primaria); stroke-width: 2.5; }
-.r-prev { stroke: var(--primaria); stroke-width: 2; stroke-dasharray: 4 4; opacity: .7; }
-.r-area { fill: var(--primaria) !important; opacity: .12; stroke: none; }
-.r-ant { stroke: var(--muted); stroke-width: 1.5; opacity: .6; }
-.r-orc { stroke: var(--perigo); stroke-width: 1.5; stroke-dasharray: 2 4; opacity: .8; }
-.r-ponto { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--primaria); box-shadow: 0 0 0 3px var(--sup); }
-.ritmo-max { position: absolute; top: -4px; left: 0; font-size: .7rem; color: var(--muted); }
-.ritmo-eixo { display: flex; justify-content: space-between; font-size: .7rem; color: var(--muted); margin-top: 4px; }
-.legenda-linhas { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .78rem; color: var(--muted); }
-.legenda-linhas span { display: inline-flex; align-items: center; gap: 6px; }
-.legenda-linhas i { width: 16px; height: 0; border-top: 2.5px solid var(--primaria); }
-.legenda-linhas i.l-prev { border-top-style: dashed; opacity: .7; }
-.legenda-linhas i.l-ant { border-top: 2px solid var(--muted); opacity: .6; }
-.legenda-linhas i.l-orc { border-top: 2px dotted var(--perigo); }
 
 /* Evolução mensal */
 .evo { position: relative; display: flex; gap: 4px; height: 180px; }
@@ -233,7 +214,6 @@ button.insight.alerta { color: var(--alerta); border-color: currentColor; font-w
 
 /* Lista por categoria */
 .lista-cat { list-style: none; margin: 0; padding: 0; display: grid; }
-.lista-cat.recolhida li:nth-child(n+7) { display: none; }
 .link.centro { justify-self: center; }
 .cat-linha { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 8px 0; border-radius: 12px; }
 .cat-info { flex: 1; min-width: 0; display: grid; gap: 4px; }

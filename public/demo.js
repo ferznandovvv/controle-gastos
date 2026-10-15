@@ -107,7 +107,7 @@ const exemplos = [
   ['gasto', 'Assinaturas', 'Netflix', 'Fernando', 44.9],
 ];
 let n = 0;
-// 6 meses de histórico, com o aluguel e a luz já lançados nos meses passados.
+// 6 meses de histórico, com o aluguel e a Netflix já lançados nos meses passados.
 const fatores = [1.15, 0.8, 1.05, 0.95, 0.9, 1];
 for (let k = 5; k >= 0; k--) {
   const mes = mesDe(new Date(hoje.getFullYear(), hoje.getMonth() - k, 1));
@@ -121,11 +121,11 @@ for (let k = 5; k >= 0; k--) {
   });
   if (k > 0) {
     store.set(`lancamentos/aluguel_${mes}`, { tipo: 'gasto', valor: 2100, categoria: 'Moradia', descricao: 'Aluguel', quem: '', data: `${mes}-10`, mes, fixoId: 'aluguel', confirmado: false, criadoEm: { seconds: n } });
-    store.set(`lancamentos/luz_${mes}`, { tipo: 'gasto', valor: 180 + k * 12, categoria: 'Contas da casa', descricao: 'Luz', quem: '', data: `${mes}-15`, mes, fixoId: 'luz', confirmado: true, criadoEm: { seconds: n } });
+    store.set(`lancamentos/netflix_${mes}`, { tipo: 'gasto', valor: 55.9, categoria: 'Assinaturas', descricao: 'Netflix', quem: '', data: `${mes}-15`, mes, fixoId: 'netflix', confirmado: false, criadoEm: { seconds: n } });
   }
 }
 const mesesPassados = Array.from({ length: 5 }, (_, i) => mesDe(new Date(hoje.getFullYear(), hoje.getMonth() - 5 + i, 1)));
 store.set('fixos/aluguel', { tipo: 'gasto', valor: 2100, dia: 10, categoria: 'Moradia', descricao: 'Aluguel', quem: '', ativo: true, inicio: mesesPassados[0], gerados: mesesPassados });
-store.set('fixos/luz', { tipo: 'gasto', valor: 210, dia: 15, categoria: 'Contas da casa', descricao: 'Luz', quem: '', variavel: true, ativo: true, inicio: mesesPassados[0], gerados: mesesPassados });
+store.set('fixos/netflix', { tipo: 'gasto', valor: 55.9, dia: 15, categoria: 'Assinaturas', descricao: 'Netflix', quem: '', ativo: true, inicio: mesesPassados[0], gerados: mesesPassados });
 store.set('fixos/feira', { tipo: 'gasto', valor: 85, frequencia: 'semanal', diaSemana: 5, categoria: 'Mercado', descricao: 'Feira', quem: '', ativo: true, inicio: anterior, inicioData: `${anterior}-01`, gerados: [] });
 store.set('config/orcamentos', { limites: { Mercado: 900, Restaurante: 300, Lazer: 250, Compras: 300 } });

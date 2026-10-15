@@ -114,17 +114,14 @@ test('autorizado lança pelo grupo do casal e a resposta vai para o grupo', asyn
   assert.deepEqual(destinos, [-100]);
 });
 
-test('confirma conta variável e atualiza a estimativa do fixo', async () => {
+test('conta da casa é lançada como gasto comum, sem mexer nos fixos', async () => {
   banco['fixos/f1'] = { descricao: 'Energia', variavel: true, valor: 150, dia: 10, categoria: 'Contas da casa', gerados: [] };
-  await mensagem('luz 187,40');
-  const mes = Object.keys(banco).find((c) => c.startsWith('lancamentos/f1_')).slice('lancamentos/f1_'.length);
-  const lanc = banco[`lancamentos/f1_${mes}`];
+  await mensagem('luz 187,40', { id: 9 });
+  const lanc = banco['lancamentos/tg_111_9'];
   assert.equal(lanc.valor, 187.4);
-  assert.equal(lanc.confirmado, true);
-  assert.equal(lanc.data, `${mes}-10`);
-  assert.equal(banco['fixos/f1'].valor, 187.4);
-  assert.deepEqual(banco['fixos/f1'].gerados, [mes]);
-  assert.match(respostas[0], /estimativa era R\$\s150,00/);
+  assert.equal(lanc.categoria, 'Contas da casa');
+  assert.equal(lanc.fixoId, undefined);
+  assert.equal(banco['fixos/f1'].valor, 150);
 });
 
 test('desfazer apaga o último gasto da pessoa', async () => {

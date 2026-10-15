@@ -10,7 +10,7 @@
 // O Telegram é avisado do endereço do bot pela publicação (.github/workflows/publicar.yml), com um segredo
 // derivado do token (segredoWebhook) que volta em cada chamada e prova que ela veio do Telegram.
 import { conectar } from './firestore.js';
-import { interpretar, escolherCategoria, observacao, mesmaConta, normal } from './interpretar.js';
+import { interpretar, escolherCategoria, observacao, normal } from './interpretar.js';
 
 // Mesma lista padrão do app (public/app.js), usada enquanto ninguém editar as categorias.
 const CAT_PADRAO = ['Mercado', 'Bebê', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
@@ -57,44 +57,12 @@ function criarBot(db, responder) {
     return docs.reduce((s, d) => s + (d.dados.tipo === 'gasto' ? d.dados.valor : 0), 0);
   }
 
-  // "luz 187,40": se a descrição bate com um fixo mensal de valor variável, grava o valor real da conta do mês
-  // (no mesmo lançamento que o app gera para esse fixo) e usa esse valor como estimativa dos próximos meses.
-  async function confirmarConta(r, mes) {
-    if (!normal(r.descricao)) return false;
-    const fixos = await db.consultar('fixos', [['variavel', 'EQUAL', true]]);
-    const fixo = fixos.find((d) => d.dados.ativo !== false && d.dados.frequencia !== 'semanal'
-      && mesmaConta(d.dados.descricao, r.descricao));
-    if (!fixo) return false;
-
-    const caminho = `lancamentos/${fixo.id}_${mes}`;
-    const atual = await db.ler(caminho);
-    const estimado = atual ? atual.dados.valor : fixo.dados.valor;
-    const dados = {
-      tipo: 'gasto', valor: r.valor, categoria: fixo.dados.categoria, descricao: fixo.dados.descricao || '', quem: '',
-      mes, fixoId: fixo.id, confirmado: true,
-    };
-    let lancamento;
-    if (atual) {
-      lancamento = { alterar: caminho, dados };
-    } else {
-      const [a, m] = mes.split('-').map(Number);
-      const dia = String(Math.min(fixo.dados.dia, new Date(Date.UTC(a, m, 0)).getUTCDate())).padStart(2, '0');
-      lancamento = { gravar: caminho, dados: { ...dados, data: `${mes}-${dia}`, criadoPor: 'automático' }, agoraEm: 'criadoEm' };
-    }
-    await db.gravar([lancamento, { alterar: fixo.caminho, dados: { valor: r.valor }, unirEmLista: { gerados: [mes] } }]);
-    await responder(`✅ Conta *${fixo.dados.descricao}* de ${nomeMes(mes)}: ${brl(r.valor)}`
-      + `${estimado !== r.valor ? ` (estimativa era ${brl(estimado)})` : ''}\n`
-      + `Total de ${nomeMes(mes)}: ${brl(await totalDoMes(mes))}\n\nPara corrigir, mande de novo com o valor certo.`);
-    return true;
-  }
-
   async function lancar(texto, autor, idLancamento, origem) {
     const r = interpretar(texto);
     if (!r) return responder(`Não encontrei o valor 🤔\n\n${AJUDA}`);
 
     const data = dataSP(r.diasAtras);
     const mes = data.slice(0, 7);
-    if (await confirmarConta(r, mes)) return;
 
     const config = (await db.ler('config/geral'))?.dados || {};
     const categoria = escolherCategoria(r.descricao, config.catGasto?.length ? config.catGasto : CAT_PADRAO);
