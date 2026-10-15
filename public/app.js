@@ -405,11 +405,9 @@ function renderResumo() {
   const gastos = gastosDoPeriodo(meses);
   const total = soma(gastos);
   renderHero(gastos, total, meses);
-  renderInsights(gastos, total);
   renderUltimos(gastos);
   renderCategorias(gastos, total, meses);
   renderEvolucao();
-  renderComposicao(gastos, total, meses);
   renderPessoas(gastos, total);
 }
 
@@ -436,25 +434,6 @@ function renderHero(gastos, total, meses) {
   const rotulo = estado.periodo === 'ano' ? `Gastos em ${estado.ano}` : `Gastos desde ${mesCurto(meses[0])} de ${meses[0].slice(0, 4)}`;
   preencher(rotulo, `Média por mês (${meses.length})`, brl(total / meses.length),
     'Mês mais caro', mesTop ? `${cap(mesCurto(mesTop))} · ${brl(vTop)}` : '—');
-}
-
-function renderInsights(gastos, total) {
-  const ins = [];
-  const chip = (texto, classe = '') => `<span class="insight ${classe}">${texto}</span>`;
-  const variacao = (v, rotulo) => chip(`${v <= 0 ? '▼' : '▲'} ${Math.abs(v).toFixed(0)}% ${rotulo}`, v <= 0 ? 'bom' : 'ruim');
-  if (estado.periodo === 'mes' && total > 0) {
-    const mesAnt = somaMes(estado.mes, -1);
-    const ant = soma(gastosDe(lancsDoMes(mesAnt)));
-    if (ant > 0) ins.push(variacao(((total - ant) / ant) * 100, `vs ${mesCurto(mesAnt)}`));
-    const anteriores = [1, 2, 3].map((n) => soma(gastosDe(lancsDoMes(somaMes(estado.mes, -n))))).filter((v) => v > 0);
-    if (anteriores.length >= 2) {
-      const media = anteriores.reduce((a, b) => a + b, 0) / anteriores.length;
-      ins.push(variacao(((total - media) / media) * 100, `vs média de ${anteriores.length} meses`));
-    }
-  }
-  const [cat, v] = Object.entries(somar(gastos, 'categoria')).sort((a, b) => b[1] - a[1])[0] || [];
-  if (cat && total) ins.push(chip(`${emoji(cat)} ${esc(cat)} é ${((v / total) * 100).toFixed(0)}% dos gastos`));
-  $('#insights').innerHTML = ins.join('');
 }
 
 // Barra de orçamento; a marca mostra quanto do mês já passou (onde o gasto "deveria" estar).
@@ -574,21 +553,6 @@ function renderEvolucao() {
     </button>`).join('')}
   </div>`;
   if (meses.length > 12) $('.evo').scrollLeft = 99999;
-}
-
-function renderComposicao(gastos, total, meses) {
-  if (!total) {
-    $('#composicao').innerHTML = '<p class="vazio">Nada por aqui ainda.</p>';
-    return;
-  }
-  const fixos = soma(gastos.filter((l) => l.fixoId));
-  const dia = total - fixos;
-  const n = meses.length;
-  const parte = (rot, v, classe) => `<li><i class="${classe}"></i><span>${rot}</span><b>${brl(v)}</b>
-    <small class="muted">${((v / total) * 100).toFixed(0)}%${n > 1 ? ` · ≈ ${brl(v / n)}/mês` : ''}</small></li>`;
-  $('#composicao').innerHTML = `
-    <div class="barra-empilhada">${fixos ? `<span class="c-fixo" style="flex:${fixos}"></span>` : ''}${dia ? `<span class="c-dia" style="flex:${dia}"></span>` : ''}</div>
-    <ul class="legenda">${parte('🔁 Fixos', fixos, 'c-fixo')}${parte('🛍️ Dia a dia', dia, 'c-dia')}</ul>`;
 }
 
 // Os 5 mais recentes do período; fixos que ainda vão vencer ficam de fora.
