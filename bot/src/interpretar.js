@@ -65,9 +65,19 @@ export function observacao(descricao, categoria) {
 
 const RE_VALOR = /(?:r\$\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|real|conto|contos)\b)?/i;
 
-// Retorna { valor, descricao, diasAtras } ou null se não houver valor.
+// "3x", "em 3x", "3 vezes": compra parcelada (de 2 a 24 vezes; "1x" é à vista).
+const RE_PARCELAS = /(^|\s)(?:em\s+)?(\d{1,2})\s*(?:x|vezes)(?=\s|$)/i;
+
+// Retorna { valor, descricao, diasAtras, parcelas } ou null se não houver valor.
+// O valor é o total da compra; dividir em parcelas fica para quem grava.
 export function interpretar(texto) {
-  const original = String(texto || '').trim();
+  let original = String(texto || '').trim();
+  let parcelas = 1;
+  const p = original.match(RE_PARCELAS);
+  if (p && Number(p[2]) >= 1 && Number(p[2]) <= 24) {
+    parcelas = Number(p[2]);
+    original = (original.slice(0, p.index) + p[1] + original.slice(p.index + p[0].length)).trim();
+  }
   const m = original.match(RE_VALOR);
   if (!m) return null;
   let num = m[1];
@@ -84,5 +94,21 @@ export function interpretar(texto) {
     .trim()
     .replace(/^((de|do|da|no|na|em|com|o|a)\s+)+/i, '');
   const descricao = resto ? resto[0].toUpperCase() + resto.slice(1) : '';
-  return { valor, descricao, diasAtras };
+  return { valor, descricao, diasAtras, parcelas };
+}
+
+// Divide o total em centavos; o que não divide certinho vai para a 1ª parcela, como no cartão
+// (mesma regra de dividirParcelas em public/app.js).
+export function dividirParcelas(valor, n) {
+  const centavos = Math.round(valor * 100);
+  const base = Math.floor(centavos / n);
+  return Array.from({ length: n }, (_, i) => (i ? base : centavos - base * (n - 1)) / 100);
+}
+
+// Mesmo dia, k meses depois (dia 31 vira o último dia dos meses mais curtos).
+export function dataDaParcela(data, k) {
+  const [a, m] = data.slice(0, 7).split('-').map(Number);
+  const alvo = new Date(Date.UTC(a, m - 1 + k, 1));
+  const ultimoDia = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${alvo.toISOString().slice(0, 7)}-${String(Math.min(Number(data.slice(8)), ultimoDia)).padStart(2, '0')}`;
 }

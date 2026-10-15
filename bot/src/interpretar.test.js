@@ -19,7 +19,7 @@ test('valores e descrições', () => {
     ['50', 50, '', 0],
   ];
   for (const [texto, valor, descricao, diasAtras] of casos) {
-    assert.deepEqual(interpretar(texto), { valor, descricao, diasAtras }, texto);
+    assert.deepEqual(interpretar(texto), { valor, descricao, diasAtras, parcelas: 1 }, texto);
   }
 });
 
@@ -65,4 +65,13 @@ test('observação sem a palavra que só indicava a categoria', () => {
     assert.equal(escolherCategoria(r.descricao, CATS), categoria, texto);
     assert.equal(observacao(r.descricao, categoria), esperado, texto);
   }
+});
+
+test('parcelas', () => {
+  assert.equal(interpretar('600 geladeira 3x').parcelas, 3);
+  assert.equal(interpretar('3x 600 geladeira').valor, 600);
+  assert.equal(interpretar('600 geladeira em 3x').descricao, 'Geladeira');
+  assert.equal(interpretar('1.200 sofá em 10 vezes').parcelas, 10);
+  assert.equal(interpretar('45 mercado').parcelas, 1);
+  assert.equal(interpretar('50 6x6 parafuso').parcelas, 1);
 });

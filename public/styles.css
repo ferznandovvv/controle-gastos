@@ -379,3 +379,8 @@ textarea:focus, .input:focus { border-color: var(--primaria); background: var(--
 }
 .toast button { color: var(--primaria-suave); font-weight: 700; }
 @media (prefers-color-scheme: dark) { .toast button { color: var(--primaria-2); } }
+
+/* Parcelas */
+.linha-parcelas { display: flex; align-items: center; gap: 12px; }
+.linha-parcelas select { width: auto; min-width: 110px; }
+.link.perigo { color: var(--perigo); justify-self: center; }

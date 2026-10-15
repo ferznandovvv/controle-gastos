@@ -259,3 +259,19 @@ test('marmita cai em Restaurante', async () => {
   const r = await worker.fetch(new Request('https://bot.example/atalho/chave-f', { method: 'POST', body: '18,99 marmita ontem' }), env);
   assert.match(await r.text(), /R\$\s18,99 em Restaurante · Marmita \(ontem\)/);
 });
+
+test('compra parcelada pelo Atalho: uma parcela por mês e desfazer apaga todas', async () => {
+  const r = await worker.fetch(new Request('https://bot.example/atalho/chave-f', { method: 'POST', body: '100 cadeira 3x' }), env);
+  const texto = await r.text();
+  assert.match(texto, /R\$\s100,00 em 3x de R\$\s33,33 em Outros · Cadeira/);
+  assert.match(texto, /Última parcela em/);
+  const parcelas = Object.values(banco).sort((a, b) => a.parcela - b.parcela);
+  assert.deepEqual(parcelas.map((p) => p.valor), [33.34, 33.33, 33.33]);
+  assert.deepEqual(parcelas.map((p) => `${p.parcela}/${p.parcelas}`), ['1/3', '2/3', '3/3']);
+  assert.equal(new Set(parcelas.map((p) => p.mes)).size, 3, 'cada parcela em um mês');
+  assert.equal(new Set(parcelas.map((p) => p.parcelaId)).size, 1);
+  assert.match(texto, /Total de \S+: R\$\s33,34/, 'o mês só soma a 1ª parcela');
+  const d = await worker.fetch(new Request('https://bot.example/atalho/chave-f', { method: 'POST', body: 'desfazer' }), env);
+  assert.match(await d.text(), /Apaguei R\$\s100,00 em 3x/);
+  assert.equal(Object.keys(banco).length, 0);
+});

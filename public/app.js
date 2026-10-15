@@ -351,12 +351,28 @@ function renderTudo() {
   renderFixos();
 }
 
+// Nome do lançamento; parcelas ganham "(2/3)".
+function titulo(l) {
+  const nome = l.descricao || l.categoria;
+  return l.parcelas > 1 ? `${nome} (${l.parcela}/${l.parcelas})` : nome;
+}
+// Divide o total em centavos; o que não divide certinho vai para a 1ª parcela, como no cartão.
+function dividirParcelas(centavos, n) {
+  const base = Math.floor(centavos / n);
+  return Array.from({ length: n }, (_, i) => (i ? base : centavos - base * (n - 1)));
+}
+// Mesmo dia, k meses depois (dia 31 vira o último dia dos meses mais curtos).
+function dataDaParcela(data, k) {
+  const mes = somaMes(data.slice(0, 7), k);
+  return `${mes}-${pad(Math.min(Number(data.slice(8)), diasNoMes(mes)))}`;
+}
+
 function itemHtml(l, extra = '') {
   const receita = l.tipo === 'receita';
   const cor = receita ? '#059669' : corCategoria(l.categoria);
   return `<li><button class="item" data-id="${l.id}" ${extra}>
     <span class="avatar" style="--c:${cor}">${emoji(l.categoria)}</span>
-    <span class="info"><span class="titulo">${esc(l.descricao || l.categoria)}</span>
+    <span class="info"><span class="titulo">${esc(titulo(l))}</span>
       <small>${detalhes(l.categoria, l.quem)}${l.fixoId ? ' · 🔁' : ''}${['whatsapp', 'telegram'].includes(l.origem) ? ' · 💬' : ''}</small></span>
     <span class="valor ${receita ? 'pos' : ''}">${sinal(l)}${brl(l.valor)}</span>
   </button></li>`;
@@ -504,7 +520,7 @@ function lancsDaCategoria(cat, gastos) {
     ].filter(Boolean).join(' · ');
     return `<li><button data-id="${l.id}" class="${l.data > hoje() ? 'futuro' : ''}">
       <span class="cl-data">${dataCurta(l.data)}</span>
-      <span class="cl-desc"><span>${esc(l.descricao || l.categoria)}</span>${tags ? `<small>${tags}</small>` : ''}</span>
+      <span class="cl-desc"><span>${esc(titulo(l))}</span>${tags ? `<small>${tags}</small>` : ''}</span>
       <b>${brl(l.valor)}</b></button></li>`;
   }).join('')}</ul>
   ${itens.length > MAX ? `<p class="muted centro pequeno">+ ${itens.length - MAX} mais antigos</p>` : ''}`;
@@ -746,13 +762,18 @@ function abrirSheet(modo, item) {
 
   $('#campo-data').hidden = modo !== 'lanc';
   $('#campo-freq').hidden = modo !== 'fixo';
-  $('#campo-repetir').hidden = modo !== 'lanc' || !!item;
+  form.parcelas.value = '1';
+  const parcelado = modo === 'lanc' && item?.parcelaId && item.parcelas > 1;
+  $('#btn-excluir-parcelas').hidden = !parcelado;
+  if (parcelado) $('#btn-excluir-parcelas').textContent = `Apagar as ${item.parcelas} parcelas de ${item.descricao || item.categoria}`;
   $('#campo-ativo').hidden = modo !== 'fixo' || !item;
   $('#btn-excluir').style.visibility = item ? 'visible' : 'hidden';
   $('#sheet-titulo').textContent = modo === 'fixo'
     ? (item ? 'Editar gasto fixo' : 'Novo gasto fixo')
     : (item ? 'Editar lançamento' : COM_RECEITAS ? 'Novo lançamento' : 'Novo gasto');
-  $('#aviso').textContent = modo === 'lanc' && item?.fixoId
+  $('#aviso').textContent = parcelado
+    ? `Parcela ${item.parcela} de ${item.parcelas}. Alterar ou excluir aqui vale só para esta parcela.`
+    : modo === 'lanc' && item?.fixoId
     ? 'Gerado por um gasto fixo. Alterar aqui muda só este lançamento.'
     : modo === 'fixo' && item ? 'Alterações valem a partir do próximo lançamento gerado.' : '';
   $('#btn-salvar').textContent = item ? 'Salvar alterações' : modo === 'fixo' ? 'Adicionar fixo' : 'Adicionar';
@@ -786,6 +807,13 @@ function renderSheet() {
   $('#chips-repetir').innerHTML = opcoesRep.map(([v, rot]) => `<button type="button" class="chip ${sel.rep === v ? 'ativo' : ''}"
     data-rep="${v}" aria-pressed="${sel.rep === v}">${rot}</button>`).join('');
 
+  // Parcelas (ao lançar) e repetir não andam juntos: um esconde o outro.
+  const nParcelas = Number(form.parcelas.value) || 1;
+  const novoLanc = edicao.modo === 'lanc' && !edicao.item;
+  $('#campo-repetir').hidden = !novoLanc || nParcelas > 1;
+  $('#campo-parcelas').hidden = !novoLanc || !!sel.rep;
+  renderInfoParcelas();
+
   // Frequência (fixo)
   sheet.querySelectorAll('[data-freq]').forEach((b) => b.classList.toggle('ativo', b.dataset.freq === sel.freq));
   $('#campo-dia').hidden = sel.freq !== 'mensal';
@@ -812,6 +840,20 @@ $('#campo-semana').onclick = (e) => {
   renderSheet();
 };
 
+function renderInfoParcelas() {
+  const n = Number(form.parcelas.value) || 1;
+  if (n < 2 || !sel.centavos) {
+    $('#parcelas-info').textContent = n < 2 ? '' : 'Coloque o valor total da compra';
+    return;
+  }
+  const partes = dividirParcelas(sel.centavos, n);
+  const ultima = dataDaParcela(form.data.value || hoje(), n - 1);
+  $('#parcelas-info').textContent = `${n}x de ${brl(partes[n - 1] / 100)}${partes[0] !== partes[n - 1] ? ` (1ª ${brl(partes[0] / 100)})` : ''}`
+    + ` · última em ${mesCurto(ultima.slice(0, 7))}/${ultima.slice(2, 4)}`;
+}
+form.parcelas.innerHTML = Array.from({ length: 24 }, (_, i) => `<option value="${i + 1}">${i ? `${i + 1}x` : 'À vista'}</option>`).join('');
+form.parcelas.onchange = renderSheet;
+
 function mostrarValor() {
   inpValor.value = fmtCent(sel.centavos);
   inpValor.style.width = `${inpValor.value.length * 0.62 + 0.3}em`;
@@ -820,6 +862,7 @@ inpValor.addEventListener('input', () => {
   const digitos = inpValor.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 10);
   sel.centavos = parseInt(digitos || '0', 10);
   mostrarValor();
+  renderInfoParcelas();
   inpValor.setSelectionRange(99, 99);
 });
 inpValor.addEventListener('focus', () => setTimeout(() => inpValor.setSelectionRange(99, 99)));
@@ -887,6 +930,23 @@ $('#btn-excluir').onclick = () => {
   });
 };
 
+$('#btn-excluir-parcelas').onclick = () => {
+  const { parcelaId } = edicao.item;
+  const todas = estado.lancs.filter((l) => l.parcelaId === parcelaId);
+  sheet.close();
+  const b = writeBatch(db);
+  todas.forEach((l) => b.delete(doc(db, 'lancamentos', l.id)));
+  gravar(b.commit());
+  toast(`${todas.length} parcelas excluídas`, {
+    rotulo: 'Desfazer',
+    fn: () => {
+      const d = writeBatch(db);
+      todas.forEach(({ id, ...l }) => d.set(doc(db, 'lancamentos', id), l));
+      gravar(d.commit());
+    },
+  });
+};
+
 form.onsubmit = (e) => {
   e.preventDefault();
   if (!sel.centavos) return marcarErro($('#valor-wrap'));
@@ -924,6 +984,20 @@ form.onsubmit = (e) => {
       const extra = item.fixoId ? { confirmado: true } : {};
       gravar(updateDoc(doc(db, 'lancamentos', item.id), { ...base, data, mes, ...extra }));
       toast('Alterações salvas');
+    } else if (Number(form.parcelas.value) > 1) {
+      // Uma parcela por mês, no mesmo dia, todas ligadas pelo parcelaId.
+      const n = Number(form.parcelas.value);
+      const parcelaId = crypto.randomUUID();
+      const b = writeBatch(db);
+      dividirParcelas(sel.centavos, n).forEach((c, i) => {
+        const d = dataDaParcela(data, i);
+        b.set(doc(db, 'lancamentos', `${parcelaId}_${i + 1}`), {
+          ...base, valor: c / 100, data: d, mes: d.slice(0, 7), parcelaId, parcela: i + 1, parcelas: n,
+          criadoPor: estado.user.email, criadoEm: serverTimestamp(),
+        });
+      });
+      gravar(b.commit());
+      toast(`${brl(base.valor)} em ${n}x lançado`);
     } else {
       gravar(addDoc(collection(db, 'lancamentos'), {
         ...base, data, mes, criadoPor: estado.user.email, criadoEm: serverTimestamp(),

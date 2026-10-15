@@ -10,7 +10,7 @@
 // O Telegram é avisado do endereço do bot pela publicação (.github/workflows/publicar.yml), com um segredo
 // derivado do token (segredoWebhook) que volta em cada chamada e prova que ela veio do Telegram.
 import { conectar } from './firestore.js';
-import { interpretar, escolherCategoria, observacao, normal } from './interpretar.js';
+import { interpretar, escolherCategoria, observacao, dividirParcelas, dataDaParcela, normal } from './interpretar.js';
 
 // Mesma lista padrão do app (public/app.js), usada enquanto ninguém editar as categorias.
 const CAT_PADRAO = ['Mercado', 'Bebê', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
@@ -72,23 +72,30 @@ function criarBot(db, responder) {
     const config = (await db.ler('config/geral'))?.dados || {};
     const categoria = escolherCategoria(r.descricao, config.catGasto?.length ? config.catGasto : CAT_PADRAO);
     const descricao = observacao(r.descricao, categoria);
-    try {
-      // Um id fixo por mensagem evita duplicar quando a mesma mensagem chega de novo.
-      await db.gravar([{
-        criar: `lancamentos/${idLancamento}`,
-        dados: {
-          tipo: 'gasto', valor: r.valor, categoria, descricao, quem: '', data, mes,
-          origem, criadoPor: autor,
-        },
+    const comum = { tipo: 'gasto', categoria, descricao, quem: '', origem, criadoPor: autor };
+    // Parcelado: uma parcela por mês, no mesmo dia, ligadas pelo parcelaId (igual ao app).
+    const n = r.parcelas;
+    const valores = n > 1 ? dividirParcelas(r.valor, n) : [r.valor];
+    const gravacoes = valores.map((valor, i) => {
+      const d = dataDaParcela(data, i);
+      return {
+        // Um id fixo por mensagem evita duplicar quando a mesma mensagem chega de novo.
+        criar: `lancamentos/${n > 1 ? `${idLancamento}_${i + 1}` : idLancamento}`,
+        dados: { ...comum, valor, data: d, mes: d.slice(0, 7), ...(n > 1 && { parcelaId: idLancamento, parcela: i + 1, parcelas: n }) },
         agoraEm: 'criadoEm',
-      }]);
+      };
+    });
+    try {
+      await db.gravar(gravacoes);
     } catch (e) {
       if (e.jaExiste) return; // reenvio da mesma mensagem
       throw e;
     }
     const extra = descricao && normal(descricao) !== normal(categoria) ? ` · ${descricao}` : '';
     const quando = ['', ' (ontem)', ' (anteontem)'][r.diasAtras];
-    return responder(`✅ ${brl(r.valor)} em *${categoria}*${extra}${quando}\n`
+    const valorTxt = n > 1 ? `${brl(r.valor)} em ${n}x de ${brl(valores[n - 1])}` : brl(r.valor);
+    const ultima = n > 1 ? `Última parcela em ${nomeMes(dataDaParcela(data, n - 1).slice(0, 7))}\n` : '';
+    return responder(`✅ ${valorTxt} em *${categoria}*${extra}${quando}\n${ultima}`
       + `Total de ${nomeMes(mes)}: ${brl(await totalDoMes(mes))}\n\nErrou? Mande *desfazer*.`);
   }
 
@@ -97,8 +104,13 @@ function criarBot(db, responder) {
     const docs = await db.consultar('lancamentos', [['criadoPor', 'EQUAL', autor], ['mes', 'IN', [mes, mesAnterior(mes)]]]);
     const ultimo = docs.sort((a, b) => (b.dados.criadoEm?.getTime() || 0) - (a.dados.criadoEm?.getTime() || 0))[0];
     if (!ultimo) return responder('Não achei nenhum gasto seu recente para desfazer.');
-    await db.gravar([{ apagar: ultimo.caminho }]);
-    return responder(`🗑️ Apaguei ${brl(ultimo.dados.valor)} em ${ultimo.dados.categoria}`
+    // Compra parcelada sai inteira, com as parcelas dos outros meses.
+    const grupo = ultimo.dados.parcelaId
+      ? await db.consultar('lancamentos', [['parcelaId', 'EQUAL', ultimo.dados.parcelaId]])
+      : [ultimo];
+    await db.gravar(grupo.map((d) => ({ apagar: d.caminho })));
+    const total = grupo.reduce((s, d) => s + d.dados.valor, 0);
+    return responder(`🗑️ Apaguei ${brl(total)}${grupo.length > 1 ? ` em ${grupo.length}x` : ''} em ${ultimo.dados.categoria}`
       + `${ultimo.dados.descricao ? ` (${ultimo.dados.descricao})` : ''}.`);
   }
 

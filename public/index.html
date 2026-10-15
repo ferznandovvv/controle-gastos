@@ -188,6 +188,12 @@
         </div>
       </div>
 
+      <div class="campo" id="campo-parcelas">
+        <span class="campo-rotulo">Parcelas</span>
+        <div class="linha-parcelas"><select name="parcelas" class="input" aria-label="Número de parcelas"></select>
+          <small id="parcelas-info" class="muted"></small></div>
+      </div>
+
       <div class="campo" id="campo-repetir">
         <span class="campo-rotulo">Repetir</span>
         <div id="chips-repetir" class="chips"></div>
@@ -205,6 +211,7 @@
 
       <label class="toggle" id="campo-ativo"><span>Ativo</span><input type="checkbox" name="ativo"><i></i></label>
       <p id="aviso" class="ajuda"></p>
+      <button type="button" id="btn-excluir-parcelas" class="link perigo" hidden></button>
 
       <button type="submit" id="btn-salvar" class="btn primario grande">Salvar</button>
     </form>
