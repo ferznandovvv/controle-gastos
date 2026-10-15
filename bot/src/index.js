@@ -52,9 +52,14 @@ async function responderTelegram(env, chat, texto) {
 
 // O que o bot faz com uma mensagem, sem saber de onde ela veio: `responder` leva a resposta de volta.
 function criarBot(db, responder) {
-  async function totalDoMes(mes) {
+  // Mesma regra do app (contaNoTotal em public/app.js): lançamento de fixo com data futura não conta.
+  async function gastosDoMes(mes) {
     const docs = await db.consultar('lancamentos', [['mes', 'EQUAL', mes]]);
-    return docs.reduce((s, d) => s + (d.dados.tipo === 'gasto' ? d.dados.valor : 0), 0);
+    return docs.map((d) => d.dados).filter((d) => d.tipo === 'gasto' && !(d.fixoId && d.data > dataSP()));
+  }
+
+  async function totalDoMes(mes) {
+    return (await gastosDoMes(mes)).reduce((s, d) => s + d.valor, 0);
   }
 
   async function lancar(texto, autor, idLancamento, origem) {
@@ -99,11 +104,9 @@ function criarBot(db, responder) {
 
   async function resumo() {
     const mes = dataSP().slice(0, 7);
-    const docs = await db.consultar('lancamentos', [['mes', 'EQUAL', mes]]);
     const porCat = {};
     let total = 0;
-    for (const { dados: d } of docs) {
-      if (d.tipo !== 'gasto') continue;
+    for (const d of await gastosDoMes(mes)) {
       total += d.valor;
       porCat[d.categoria] = (porCat[d.categoria] || 0) + d.valor;
     }

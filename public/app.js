@@ -227,10 +227,13 @@ function assinarLancamentos() {
   });
 }
 
-// Datas em que um fixo cai no mês, já contando as que ainda vão vencer (para prever o total do mês).
-// Mensais: uma por mês (chave = mês). Semanais: uma por semana (chave = data), a partir de quando foram criados.
+// Datas em que um fixo cai no mês, a partir do primeiro débito depois de criado (inicioData).
+// Mensais: uma por mês (chave = mês). Semanais: uma por semana (chave = data).
 function ocorrencias(f, mes) {
-  if (f.frequencia !== 'semanal') return [{ chave: mes, data: `${mes}-${pad(Math.min(f.dia, diasNoMes(mes)))}` }];
+  if (f.frequencia !== 'semanal') {
+    const data = `${mes}-${pad(Math.min(f.dia, diasNoMes(mes)))}`;
+    return data >= (f.inicioData || '') ? [{ chave: mes, data }] : [];
+  }
   const r = [];
   for (let d = 1; d <= diasNoMes(mes); d++) {
     const data = `${mes}-${pad(d)}`;
@@ -595,11 +598,7 @@ function renderLancamentos() {
     .filter((l) => contaNoTotal(l) && (!f.tipo || l.tipo === f.tipo) && (!f.categoria || l.categoria === f.categoria) && (!f.quem || l.quem === f.quem))
     .filter((l) => !busca || normal(`${l.descricao} ${l.categoria} ${l.quem}`).includes(busca))
     .sort(ordemRecente);
-  // Fixos ficam fora da lista (estão na aba Fixos), mas aparecem resumidos no topo.
-  const lista = filtrados.filter((l) => !l.fixoId);
-  const fixos = filtrados.filter((l) => l.fixoId && l.tipo === 'gasto');
-  const totalFixos = fixos.reduce((s, l) => s + l.valor, 0);
-
+  const lista = filtrados;
   const t = totais(lista);
   $('#total-filtro').innerHTML = lista.length ? `<span>${lista.length} lançamento${lista.length > 1 ? 's' : ''}</span>
     <span>${t.gastos ? `<b class="neg">${COM_RECEITAS ? '− ' : ''}${brl(t.gastos)}</b>` : ''}${t.receitas ? ` <b class="pos">+ ${brl(t.receitas)}</b>` : ''}</span>` : '';
@@ -607,16 +606,11 @@ function renderLancamentos() {
   const grupos = {};
   for (const l of lista) (grupos[l.data] ||= []).push(l);
   const filtrando = f.tipo || f.quem || f.categoria || busca;
-  const linhaFixos = fixos.length ? `<button class="resumo-fixos-lanc" data-ir="fixos">
-      <span class="avatar pequeno">🔁</span>
-      <span class="info"><span class="titulo">Gastos fixos do mês</span>
-        <small>${fixos.length} no mês · ver na aba Fixos</small></span>
-      <b class="valor">${brl(totalFixos)}</b></button>` : '';
-  $('#lista-lanc').innerHTML = linhaFixos + Object.entries(grupos).map(([data, itens]) => {
+  $('#lista-lanc').innerHTML = Object.entries(grupos).map(([data, itens]) => {
     const g = totais(itens).gastos;
     return `<div class="dia-cab"><span>${rotuloDia(data)}</span>${g ? `<span>${COM_RECEITAS ? '− ' : ''}${brl(g)}</span>` : ''}</div>
       <ul class="itens">${itens.map((l) => itemHtml(l)).join('')}</ul>`;
-  }).join('') + (lista.length || (fixos.length && filtrando) ? '' : `<div class="vazio grande"><span>${filtrando ? '🔍' : '🧾'}</span>
+  }).join('') + (lista.length ? '' : `<div class="vazio grande"><span>${filtrando ? '🔍' : '🧾'}</span>
     ${filtrando ? 'Nenhum lançamento com esses filtros.' : 'Nenhum lançamento neste mês.<br>Toque em <b>+</b> para adicionar.'}</div>`);
 }
 $('#chips-filtro').onclick = (e) => {
@@ -702,7 +696,7 @@ $('#salvar-orc').onclick = () => {
   }
   document.activeElement?.blur();
   gravar(setDoc(doc(db, 'config', 'orcamentos'), { limites }));
-  toast('Orçamento salvo');
+  toast('Limites salvos');
 };
 
 function toast(msg, acao) {

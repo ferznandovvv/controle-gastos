@@ -222,3 +222,11 @@ test('Atalho por GET, com a chave no endereço', async () => {
   const ruim = await worker.fetch(new Request('https://bot.example/atalho/errada?texto=10'), env);
   assert.equal(ruim.status, 401);
 });
+
+test('total ignora lançamento de fixo com data futura, como o app', async () => {
+  const mes = new Date().toISOString().slice(0, 7);
+  banco['lancamentos/fixo_futuro'] = { tipo: 'gasto', valor: 2000, mes, data: '2999-12-31', fixoId: 'x', categoria: 'Moradia' };
+  banco['lancamentos/fixo_passado'] = { tipo: 'gasto', valor: 30, mes, data: '2000-01-01', fixoId: 'y', categoria: 'Assinaturas' };
+  await mensagem('total');
+  assert.match(respostas.at(-1), /\*R\$\s30,00\*/);
+});
