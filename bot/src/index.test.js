@@ -2,7 +2,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import worker, { segredoWebhook } from './index.js';
+import worker, { segredoWebhook, donoDaChave } from './index.js';
 import { paraCampos } from './firestore.js';
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -13,6 +13,7 @@ const env = {
     private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }),
   }),
   TELEGRAM_TOKEN: '123:abc', TELEGRAM_USUARIOS_PERMITIDOS: '111, 222',
+  ATALHO_CHAVES: 'Fernando:chave-f, Esposa:chave-e',
 };
 const RAIZ = 'projects/proj/databases/(default)/documents';
 
@@ -160,4 +161,58 @@ test('se a formatação quebrar, reenvia sem negrito', async () => {
   };
   await mensagem('oi');
   assert.deepEqual(enviados, ['Markdown', 'texto']);
+});
+
+function atalho(corpo, chave = 'chave-f', tipo = 'application/json') {
+  return worker.fetch(new Request('https://bot.example/atalho', {
+    method: 'POST', body: corpo, headers: { 'Content-Type': tipo, ...(chave && { Authorization: `Bearer ${chave}` }) },
+  }), env);
+}
+
+test('donoDaChave identifica quem usa o Atalho', () => {
+  assert.equal(donoDaChave(env.ATALHO_CHAVES, 'Bearer chave-e'), 'esposa');
+  assert.equal(donoDaChave(env.ATALHO_CHAVES, 'chave-f'), 'fernando');
+  assert.equal(donoDaChave(env.ATALHO_CHAVES, 'Bearer outra'), null);
+  assert.equal(donoDaChave(env.ATALHO_CHAVES, ''), null);
+  assert.equal(donoDaChave('', 'Bearer x'), null);
+});
+
+test('Atalho lança o gasto e devolve a confirmação em texto puro', async () => {
+  const r = await atalho(JSON.stringify({ texto: '45,90 mercado' }));
+  assert.equal(r.status, 200);
+  const corpo = await r.text();
+  assert.match(corpo, /R\$\s45,90 em Mercado/);
+  assert.doesNotMatch(corpo, /\*/);
+  const [caminho, doc] = Object.entries(banco).find(([c]) => c.startsWith('lancamentos/at_'));
+  assert.ok(caminho);
+  assert.equal(doc.criadoPor, 'atalho:fernando');
+  assert.equal(doc.origem, 'atalho');
+  assert.equal(respostas.length, 0, 'não manda nada para o Telegram');
+});
+
+test('Atalho aceita texto simples no corpo', async () => {
+  const r = await atalho('20 uber', 'chave-e', 'text/plain');
+  assert.match(await r.text(), /Transporte/);
+  assert.equal(Object.values(banco)[0].criadoPor, 'atalho:esposa');
+});
+
+test('Atalho recusa chave errada ou ausente', async () => {
+  assert.equal((await atalho('{"texto":"10 pão"}', 'errada')).status, 401);
+  assert.equal((await atalho('{"texto":"10 pão"}', null)).status, 401);
+  assert.equal(commits.length, 0);
+});
+
+test('Atalho: desfazer apaga só o último da mesma pessoa', async () => {
+  await atalho('{"texto":"10 pão"}', 'chave-f');
+  await new Promise((r) => setTimeout(r, 5));
+  await atalho('{"texto":"30 farmácia"}', 'chave-e');
+  const r = await atalho('{"texto":"desfazer"}', 'chave-f');
+  assert.match(await r.text(), /Apaguei R\$\s10,00/);
+  assert.equal(Object.values(banco).length, 1);
+  assert.equal(Object.values(banco)[0].criadoPor, 'atalho:esposa');
+});
+
+test('Atalho sem valor explica como usar', async () => {
+  const r = await atalho('{"texto":"mercado"}');
+  assert.match(await r.text(), /Não encontrei o valor/);
 });

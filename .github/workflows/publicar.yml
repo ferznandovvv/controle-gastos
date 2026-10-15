@@ -1,6 +1,6 @@
 # Publica tudo sempre que algo entra no branch main:
 #   app   → Firebase Hosting + regras do Firestore (precisa do segredo FIREBASE_SERVICE_ACCOUNT)
-#   bot   → Cloudflare Workers (precisa de CLOUDFLARE_API_TOKEN; os segredos do Telegram vão junto)
+#   bot   → Cloudflare Workers (precisa de CLOUDFLARE_API_TOKEN; as chaves do Atalho e do Telegram vão junto)
 # Cada parte só é publicada quando os segredos dela estão cadastrados no GitHub.
 name: Publicar
 
@@ -71,9 +71,10 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_USUARIOS_PERMITIDOS: ${{ secrets.TELEGRAM_USUARIOS_PERMITIDOS }}
+          ATALHO_CHAVES: ${{ secrets.ATALHO_CHAVES }}
         run: |
           node -e '
-            const nomes = ["FIREBASE_SERVICE_ACCOUNT", "TELEGRAM_TOKEN", "TELEGRAM_USUARIOS_PERMITIDOS"];
+            const nomes = ["FIREBASE_SERVICE_ACCOUNT", "ATALHO_CHAVES", "TELEGRAM_TOKEN", "TELEGRAM_USUARIOS_PERMITIDOS"];
             const s = Object.fromEntries(nomes.filter((n) => process.env[n]).map((n) => [n, process.env[n]]));
             console.log("Enviando:", Object.keys(s).join(", ") || "nenhum");
             require("fs").writeFileSync(process.env.RUNNER_TEMP + "/segredos.json", JSON.stringify(s), { mode: 0o600 });
