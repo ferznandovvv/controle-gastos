@@ -357,7 +357,7 @@ function itemHtml(l, extra = '') {
   return `<li><button class="item" data-id="${l.id}" ${extra}>
     <span class="avatar" style="--c:${cor}">${emoji(l.categoria)}</span>
     <span class="info"><span class="titulo">${esc(l.descricao || l.categoria)}</span>
-      <small>${detalhes(l.categoria, l.quem)}${l.fixoId ? ' · 🔁' : ''}${l.origem === 'whatsapp' ? ' · 💬' : ''}</small></span>
+      <small>${detalhes(l.categoria, l.quem)}${l.fixoId ? ' · 🔁' : ''}${['whatsapp', 'telegram'].includes(l.origem) ? ' · 💬' : ''}</small></span>
     <span class="valor ${receita ? 'pos' : ''}">${sinal(l)}${brl(l.valor)}</span>
   </button></li>`;
 }
@@ -560,7 +560,7 @@ function lancsDaCategoria(cat, gastos, pendentes) {
       l.fixoId ? '🔁 fixo' : '',
       pendentes.has(l.id) ? '≈ a confirmar' : '',
       l.data > hoje() ? 'a vencer' : '',
-      l.origem === 'whatsapp' ? '💬' : '',
+      ['whatsapp', 'telegram'].includes(l.origem) ? '💬' : '',
     ].filter(Boolean).join(' · ');
     return `<li><button data-id="${l.id}" class="${l.data > hoje() ? 'futuro' : ''}">
       <span class="cl-data">${dataCurta(l.data)}</span>

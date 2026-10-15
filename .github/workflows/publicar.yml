@@ -1,6 +1,6 @@
 # Publica tudo sempre que algo entra no branch main:
 #   app   → Firebase Hosting + regras do Firestore (precisa do segredo FIREBASE_SERVICE_ACCOUNT)
-#   bot   → Cloudflare Workers (precisa de CLOUDFLARE_API_TOKEN; os segredos do WhatsApp vão junto)
+#   bot   → Cloudflare Workers (precisa de CLOUDFLARE_API_TOKEN; os segredos do Telegram vão junto)
 # Cada parte só é publicada quando os segredos dela estão cadastrados no GitHub.
 name: Publicar
 
@@ -42,6 +42,7 @@ jobs:
         working-directory: bot
     env:
       TEM_CHAVE: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+      TEM_TELEGRAM: ${{ secrets.TELEGRAM_TOKEN != '' }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
@@ -60,24 +61,37 @@ jobs:
 
       - name: Publicar o bot
         if: env.TEM_CHAVE == 'true'
-        run: npx --yes wrangler@4 deploy
+        run: |
+          npx --yes wrangler@4 deploy | tee "$RUNNER_TEMP/deploy.log"
+          grep -o 'https://[^ ]*workers\.dev' "$RUNNER_TEMP/deploy.log" | head -1 > "$RUNNER_TEMP/url_bot"
 
       - name: Enviar os segredos do bot
         if: env.TEM_CHAVE == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
-          WHATSAPP_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET }}
-          WHATSAPP_VERIFY_TOKEN: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
-          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
-          WHATSAPP_NUMEROS_PERMITIDOS: ${{ secrets.WHATSAPP_NUMEROS_PERMITIDOS }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_USUARIOS_PERMITIDOS: ${{ secrets.TELEGRAM_USUARIOS_PERMITIDOS }}
         run: |
           node -e '
-            const nomes = ["FIREBASE_SERVICE_ACCOUNT", "WHATSAPP_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN",
-              "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_NUMEROS_PERMITIDOS"];
+            const nomes = ["FIREBASE_SERVICE_ACCOUNT", "TELEGRAM_TOKEN", "TELEGRAM_USUARIOS_PERMITIDOS"];
             const s = Object.fromEntries(nomes.filter((n) => process.env[n]).map((n) => [n, process.env[n]]));
             console.log("Enviando:", Object.keys(s).join(", ") || "nenhum");
             require("fs").writeFileSync(process.env.RUNNER_TEMP + "/segredos.json", JSON.stringify(s), { mode: 0o600 });
           '
           if [ "$(cat "$RUNNER_TEMP/segredos.json")" != "{}" ]; then npx --yes wrangler@4 secret bulk "$RUNNER_TEMP/segredos.json"; fi
           rm -f "$RUNNER_TEMP/segredos.json"
+
+      # Diz ao Telegram para onde mandar as mensagens. O segredo é o mesmo que o bot calcula
+      # (segredoWebhook em bot/src/index.js): sha256 de "webhook:<token>", 48 primeiros caracteres.
+      - name: Registrar o bot no Telegram
+        if: env.TEM_CHAVE == 'true' && env.TEM_TELEGRAM == 'true'
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: |
+          URL=$(cat "$RUNNER_TEMP/url_bot")
+          SEGREDO=$(printf 'webhook:%s' "$TELEGRAM_TOKEN" | sha256sum | cut -c1-48)
+          echo "Webhook: $URL"
+          curl -sS --fail-with-body "https://api.telegram.org/bot$TELEGRAM_TOKEN/setWebhook" \
+            --data-urlencode "url=$URL" --data-urlencode "secret_token=$SEGREDO" \
+            --data-urlencode 'allowed_updates=["message"]'
+          echo
