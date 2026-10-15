@@ -1,10 +1,10 @@
 // Lança os gastos no Firestore a partir de mensagens de texto. Roda no Cloudflare Workers e atende:
-//   POST /atalho   o app Atalhos do iPhone (corpo {"texto": "45,90 mercado"}, resposta em texto simples)
+//   /atalho        o app Atalhos do iPhone (veja a função atalho; a resposta vem em texto simples)
 //   POST /         o bot do Telegram (opcional)
 // Configuração (segredos do Worker):
 //   FIREBASE_SERVICE_ACCOUNT       chave JSON da conta de serviço do Firebase
-//   ATALHO_CHAVES                  quem pode usar o Atalho, como "nome:chave,nome:chave"; a chave vai no
-//                                  cabeçalho "Authorization: Bearer <chave>" e o nome identifica quem lançou
+//   ATALHO_CHAVES                  quem pode usar o Atalho, como "nome:chave,nome:chave"; a chave vem no
+//                                  endereço ou no cabeçalho Authorization e o nome identifica quem lançou
 //   TELEGRAM_TOKEN                 token do bot, dado pelo @BotFather
 //   TELEGRAM_USUARIOS_PERMITIDOS   IDs do Telegram que podem lançar gastos, separados por vírgula
 // O Telegram é avisado do endereço do bot pela publicação (.github/workflows/publicar.yml), com um segredo
@@ -196,19 +196,25 @@ export function donoDaChave(chaves, autorizacao) {
   return null;
 }
 
-async function atalho(req, env) {
+// Aceita dois formatos, para o Atalho poder ser montado do jeito mais simples:
+//   GET  /atalho/<chave>?texto=45,90%20mercado
+//   POST /atalho  com "Authorization: Bearer <chave>" e corpo {"texto": "..."} (ou o texto puro)
+async function atalho(req, env, url) {
   const texto = (msg, status = 200) => new Response(msg, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
-  const nome = donoDaChave(env.ATALHO_CHAVES, req.headers.get('authorization'));
+  const chaveNoCaminho = decodeURIComponent(url.pathname.slice('/atalho/'.length));
+  const nome = donoDaChave(env.ATALHO_CHAVES, chaveNoCaminho || req.headers.get('authorization'));
   if (!nome) {
     console.warn('Atalho com chave inválida');
     return texto('Chave inválida: confira a chave no Atalho.', 401);
   }
-  const corpo = await req.text();
-  let mensagem = corpo;
-  try {
-    const json = JSON.parse(corpo);
-    if (json && typeof json === 'object') mensagem = json.texto ?? json.text ?? '';
-  } catch { /* corpo em texto simples */ }
+  let mensagem = url.searchParams.get('texto') ?? '';
+  if (req.method === 'POST') {
+    mensagem = await req.text();
+    try {
+      const json = JSON.parse(mensagem);
+      if (json && typeof json === 'object') mensagem = json.texto ?? json.text ?? '';
+    } catch { /* corpo em texto simples */ }
+  }
   mensagem = String(mensagem || '').trim();
   if (!mensagem) return texto(AJUDA.replace(/\*/g, ''));
 
@@ -227,10 +233,12 @@ async function atalho(req, env) {
 
 export default {
   async fetch(req, env) {
-    const { pathname } = new URL(req.url);
+    const url = new URL(req.url);
+    if (url.pathname === '/atalho' || url.pathname.startsWith('/atalho/')) {
+      return ['GET', 'POST'].includes(req.method) ? atalho(req, env, url) : new Response(null, { status: 405 });
+    }
     if (req.method === 'GET') return new Response('Bot de gastos no ar.');
     if (req.method !== 'POST') return new Response(null, { status: 405 });
-    if (pathname === '/atalho') return atalho(req, env);
     return telegram(req, env);
   },
 };

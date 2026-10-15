@@ -216,3 +216,12 @@ test('Atalho sem valor explica como usar', async () => {
   const r = await atalho('{"texto":"mercado"}');
   assert.match(await r.text(), /Não encontrei o valor/);
 });
+
+test('Atalho por GET, com a chave no endereço', async () => {
+  const r = await worker.fetch(new Request('https://bot.example/atalho/chave-e?texto=ontem%2012%2C50%20padaria'), env);
+  assert.equal(r.status, 200);
+  assert.match(await r.text(), /R\$\s12,50 em Mercado · Padaria \(ontem\)/);
+  assert.equal(Object.values(banco)[0].criadoPor, 'atalho:esposa');
+  const ruim = await worker.fetch(new Request('https://bot.example/atalho/errada?texto=10'), env);
+  assert.equal(ruim.status, 401);
+});
