@@ -13,5 +13,5 @@ export const firebaseConfig = {
 // Para liberar outra pessoa, descomente/adicione o e-mail aqui e lá.
 export const EMAILS_PERMITIDOS = [
   'fernandomendoncacintra@gmail.com',
-  // 'EMAIL_DA_ESPOSA@gmail.com',
+  'gabrielagomesfran@gmail.com',
 ];
