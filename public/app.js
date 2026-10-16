@@ -10,6 +10,9 @@ if (!document.getElementById('chips-parcelas')) {
   try { sessionStorage.removeItem('recarregouVersao'); } catch { /* sem armazenamento */ }
 }
 
+// Tela travada como app: sem zoom de pinça (gesture* é do Safari, que ignora user-scalable=no).
+['gesturestart', 'gesturechange'].forEach((t) => document.addEventListener(t, (e) => e.preventDefault()));
+
 // ?demo em localhost usa um Firebase falso em memória, para testar a interface.
 const DEMO = new URLSearchParams(location.search).has('demo') && ['localhost', '127.0.0.1'].includes(location.hostname);
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
@@ -448,26 +451,24 @@ function renderResumo() {
   renderPessoas(gastos, total);
 }
 
+// Total do período e, embaixo, uma linha com a média e quantos lançamentos foram.
 function renderHero(gastos, total, meses) {
-  const preencher = (rotulo, l1, v1, l2, v2) => {
-    $('#hero-rotulo').textContent = rotulo;
-    $('#hero-saldo').textContent = brl(total);
-    $('#hero-l1').textContent = l1;
-    $('#hero-receitas').textContent = v1;
-    $('#hero-l2').textContent = l2;
-    $('#hero-gastos').textContent = v2;
-  };
+  const qtd = `${gastos.length} lançamento${gastos.length === 1 ? '' : 's'}`;
+  let rotulo;
+  let media;
   if (estado.periodo === 'mes') {
-    const nome = nomeMes(estado.mes, { month: 'long' });
-    const mesAnt = somaMes(estado.mes, -1);
-    const dias = estado.mes === mesAtual() ? new Date().getDate() : estado.mes < mesAtual() ? diasNoMes(estado.mes) : 1;
-    return preencher(`Gastos de ${nome}`, cap(nomeMes(mesAnt, { month: 'long' })), brl(soma(gastosDoPeriodo([mesAnt]))),
-      'Média por dia', brl(total / dias));
+    rotulo = `Gastos de ${nomeMes(estado.mes, { month: 'long' })}`;
+    const dias = estado.mes === mesAtual() ? new Date().getDate() : estado.mes < mesAtual() ? diasNoMes(estado.mes) : 0;
+    media = dias ? `${brl(total / dias)} por dia` : '';
+  } else {
+    rotulo = estado.periodo === 'ano' ? `Gastos em ${estado.ano}` : `Gastos desde ${mesCurto(meses[0])} de ${meses[0].slice(0, 4)}`;
+    // Conta só a partir do primeiro mês com gasto: meses antes de começar a usar o app não entram na média.
+    const primeiro = gastos.reduce((min, l) => (l.mes < min ? l.mes : min), meses[meses.length - 1]);
+    media = `${brl(total / (meses.filter((m) => m >= primeiro).length || 1))} por mês`;
   }
-  const [mesTop, vTop] = Object.entries(somar(gastos, 'mes')).sort((a, b) => b[1] - a[1])[0] || [];
-  const rotulo = estado.periodo === 'ano' ? `Gastos em ${estado.ano}` : `Gastos desde ${mesCurto(meses[0])} de ${meses[0].slice(0, 4)}`;
-  preencher(rotulo, `Média por mês (${meses.length})`, brl(total / meses.length),
-    'Mês mais caro', mesTop ? `${cap(mesCurto(mesTop))} · ${brl(vTop)}` : '—');
+  $('#hero-rotulo').textContent = rotulo;
+  $('#hero-saldo').textContent = brl(total);
+  $('#hero-sub').textContent = total ? [media, qtd].filter(Boolean).join(' · ') : '';
 }
 
 // Barra do limite da categoria: amarela perto do limite, vermelha quando passa.
