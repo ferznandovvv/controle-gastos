@@ -383,3 +383,13 @@ textarea:focus, .input:focus { border-color: var(--primaria); background: var(--
 .parcelas-info { display: block; margin-top: 8px; }
 .parcelas-info:empty { display: none; }
 .link.perigo { color: var(--perigo); justify-self: center; }
+
+/* Evolução: detalhe do mês tocado */
+.evo-detalhe { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--borda); }
+.evo-cats { list-style: none; display: grid; gap: 10px; }
+.evo-cats li { display: flex; align-items: center; gap: 10px; }
+.evo-cats .cat-info { flex: 1; display: grid; gap: 4px; min-width: 0; }
+
+/* Lixeira */
+#lixeira .item { cursor: default; }
+#lixeira .btn.pequeno { flex: none; }

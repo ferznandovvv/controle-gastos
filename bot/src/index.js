@@ -51,6 +51,23 @@ async function responderTelegram(env, chat, texto) {
 }
 
 // O que o bot faz com uma mensagem, sem saber de onde ela veio: `responder` leva a resposta de volta.
+// Categoria que vocês já corrigiram no app para essa descrição (texto inteiro, ou só a primeira palavra).
+export function categoriaAprendida(descricao, mapa = {}, categorias = []) {
+  const texto = normal(descricao);
+  if (!texto) return null;
+  const achada = mapa[texto] || mapa[texto.split(' ')[0]];
+  return categorias.includes(achada) ? achada : null;
+}
+
+// A partir de 80% do limite mensal da categoria, avisa quanto falta (ou quanto passou).
+export function avisoDeLimite(categoria, gastosDoMes, limite) {
+  if (!(limite > 0)) return '';
+  const usado = gastosDoMes.filter((d) => d.categoria === categoria).reduce((s, d) => s + d.valor, 0);
+  if (usado > limite) return `🚨 ${categoria} passou ${brl(usado - limite)} do limite de ${brl(limite)}`;
+  if (usado >= limite * 0.8) return `⚠️ ${categoria}: faltam ${brl(limite - usado)} para o limite de ${brl(limite)}`;
+  return '';
+}
+
 function criarBot(db, responder) {
   // Mesma regra do app (contaNoTotal em public/app.js): lançamento de fixo com data futura não conta.
   async function gastosDoMes(mes) {
@@ -69,8 +86,12 @@ function criarBot(db, responder) {
     const data = dataSP(r.diasAtras);
     const mes = data.slice(0, 7);
 
-    const config = (await db.ler('config/geral'))?.dados || {};
-    const categoria = escolherCategoria(r.descricao, config.catGasto?.length ? config.catGasto : CAT_PADRAO);
+    const [config, aprendizado, orcamentos] = await Promise.all(
+      ['config/geral', 'config/aprendizado', 'config/orcamentos'].map(async (c) => (await db.ler(c))?.dados || {}),
+    );
+    const categorias = config.catGasto?.length ? config.catGasto : CAT_PADRAO;
+    const categoria = categoriaAprendida(r.descricao, aprendizado.mapa, categorias)
+      || escolherCategoria(r.descricao, categorias);
     const descricao = observacao(r.descricao, categoria);
     const comum = { tipo: 'gasto', categoria, descricao, quem: '', origem, criadoPor: autor };
     // Parcelado: uma parcela por mês, no mesmo dia, ligadas pelo parcelaId (igual ao app).
@@ -95,8 +116,11 @@ function criarBot(db, responder) {
     const quando = ['', ' (ontem)', ' (anteontem)'][r.diasAtras];
     const valorTxt = n > 1 ? `${brl(r.valor)} em ${n}x de ${brl(valores[n - 1])}` : brl(r.valor);
     const ultima = n > 1 ? `Última parcela em ${nomeMes(dataDaParcela(data, n - 1).slice(0, 7))}\n` : '';
+    const gastos = await gastosDoMes(mes);
+    const total = gastos.reduce((s, d) => s + d.valor, 0);
+    const aviso = avisoDeLimite(categoria, gastos, orcamentos.limites?.[categoria]);
     return responder(`✅ ${valorTxt} em *${categoria}*${extra}${quando}\n${ultima}`
-      + `Total de ${nomeMes(mes)}: ${brl(await totalDoMes(mes))}\n\nErrou? Mande *desfazer*.`);
+      + `Total de ${nomeMes(mes)}: ${brl(total)}${aviso ? `\n${aviso}` : ''}\n\nErrou? Mande *desfazer*.`);
   }
 
   async function desfazer(autor) {
@@ -108,7 +132,11 @@ function criarBot(db, responder) {
     const grupo = ultimo.dados.parcelaId
       ? await db.consultar('lancamentos', [['parcelaId', 'EQUAL', ultimo.dados.parcelaId]])
       : [ultimo];
-    await db.gravar(grupo.map((d) => ({ apagar: d.caminho })));
+    // Vai para a lixeira do app, de onde dá para restaurar por 30 dias.
+    await db.gravar(grupo.flatMap((d) => [
+      { gravar: `lixeira/${d.id}`, dados: { ...d.dados, apagadoPor: autor }, agoraEm: 'apagadoEm' },
+      { apagar: d.caminho },
+    ]));
     const total = grupo.reduce((s, d) => s + d.dados.valor, 0);
     return responder(`🗑️ Apaguei ${brl(total)}${grupo.length > 1 ? ` em ${grupo.length}x` : ''} em ${ultimo.dados.categoria}`
       + `${ultimo.dados.descricao ? ` (${ultimo.dados.descricao})` : ''}.`);

@@ -1,4 +1,4 @@
-import { firebaseConfig, EMAILS_PERMITIDOS } from './firebase-config.js';
+import { firebaseConfig, EMAILS_PERMITIDOS, NOMES } from './firebase-config.js';
 
 // Página guardada de uma versão anterior com o código novo: recarrega uma vez para pegar a página nova,
 // em vez de deixar botões sem função.
@@ -62,7 +62,9 @@ const estado = {
   fixos: [],
   config: { ...PADRAO },
   orcamentos: {},
-  filtro: { tipo: '', quem: '', categoria: '', busca: '' },
+  filtro: { tipo: '', quem: '', autor: '', categoria: '', busca: '' },
+  lixeira: [], // lançamentos apagados nos últimos 30 dias
+  evoMes: null, // mês aberto no gráfico de evolução
   unsubs: [],
   unsubLancs: null,
 };
@@ -226,6 +228,11 @@ function iniciarListeners() {
     // Só gera a partir de dados confirmados pelo servidor, para não recriar algo já apagado.
     if (!s.metadata.fromCache) gerarFixos().catch(console.error);
   }));
+  estado.unsubs.push(onSnapshot(collection(db, 'lixeira'), (s) => {
+    estado.lixeira = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderLixeira();
+    if (!s.metadata.fromCache) esvaziarLixeiraAntiga();
+  }));
   assinarLancamentos();
 }
 
@@ -364,6 +371,16 @@ function renderTudo() {
   renderFixos();
 }
 
+// Quem lançou: conta do app, Atalho ("atalho:gabi") ou fixo.
+function autor(l) {
+  const c = String(l.criadoPor || '').toLowerCase();
+  if (l.fixoId || c === 'automático') return '';
+  if (NOMES[c]) return NOMES[c];
+  const nome = c.includes(':') ? normal(c.split(':')[1]) : c.split('@')[0];
+  const conhecido = Object.values(NOMES).find((n) => nome.startsWith(normal(n).slice(0, 3)));
+  return conhecido || cap(nome);
+}
+
 // Nome do lançamento; parcelas ganham "(2/3)".
 function titulo(l) {
   const nome = l.descricao || l.categoria;
@@ -391,7 +408,7 @@ function itemHtml(l, extra = '') {
   return `<li><button class="item" data-id="${l.id}" ${extra}>
     <span class="avatar" style="--c:${cor}">${emoji(l.categoria)}</span>
     <span class="info"><span class="titulo">${esc(titulo(l))}</span>
-      <small>${detalhes(l.categoria, l.quem)}${l.fixoId ? ' · 🔁' : ''}${['whatsapp', 'telegram'].includes(l.origem) ? ' · 💬' : ''}</small></span>
+      <small>${detalhes(l.categoria, l.quem)}${l.fixoId ? ' · 🔁' : ''}${autor(l) ? ` · ${esc(autor(l))}` : ''}</small></span>
     <span class="valor ${receita ? 'pos' : ''}">${sinal(l)}${brl(l.valor)}</span>
   </button></li>`;
 }
@@ -559,14 +576,30 @@ function renderEvolucao() {
   $('#evo-sub').textContent = `média ${brl(media)}`;
   $('#evolucao').innerHTML = `<div class="evo ${meses.length > 12 ? 'rolavel' : ''}">
     <i class="evo-media" style="bottom:calc(20px + (100% - 38px) * ${media / max})"></i>
-    ${meses.map((m, i) => `<button class="evo-col ${estado.periodo === 'mes' && m === estado.mes ? 'sel' : ''} ${m > mesAtual() ? 'futuro' : ''}"
+    ${meses.map((m, i) => `<button class="evo-col ${m === (estado.evoMes || (estado.periodo === 'mes' ? estado.mes : '')) ? 'sel' : ''} ${m > mesAtual() ? 'futuro' : ''}"
       data-mes="${m}" title="${cap(nomeMes(m))}: ${brl(valores[i])}">
       <span class="evo-area"><small style="bottom:calc(${(valores[i] / max) * 100}% + 2px)">${valores[i] ? compacto(valores[i]) : ''}</small>
         <span class="evo-barra" style="height:${(valores[i] / max) * 100}%"></span></span>
       <span class="evo-rot">${mesCurto(m)}${m.endsWith('-01') || i === 0 ? `<br>${m.slice(2, 4)}` : ''}</span>
     </button>`).join('')}
-  </div>`;
+  </div>${estado.evoMes && meses.includes(estado.evoMes) ? detalheDoMes(estado.evoMes) : ''}`;
   if (meses.length > 12) $('.evo').scrollLeft = 99999;
+}
+
+// Tocar numa barra da evolução abre, ali mesmo, quanto foi cada categoria naquele mês.
+function detalheDoMes(mes) {
+  const gastos = gastosDoPeriodo([mes]);
+  const total = soma(gastos);
+  const porCat = Object.entries(somar(gastos, 'categoria')).sort((a, b) => b[1] - a[1]);
+  return `<div class="evo-detalhe">
+    <div class="linha"><b>${cap(nomeMes(mes))}</b><b>${brl(total)}</b></div>
+    ${porCat.length ? `<ul class="evo-cats">${porCat.map(([c, v]) => `<li>
+      <span class="avatar pequeno" style="--c:${corCategoria(c)}">${emoji(c)}</span>
+      <span class="cat-info"><span class="linha"><span>${esc(c)}</span><b>${brl(v)}</b></span>
+        <span class="barra"><span style="width:${(v / porCat[0][1]) * 100}%;background:${corCategoria(c)}"></span></span></span></li>`).join('')}</ul>`
+      : '<p class="vazio pequeno">Nenhum gasto neste mês.</p>'}
+    <button class="link centro" data-abrir-mes="${mes}">Ver o mês completo</button>
+  </div>`;
 }
 
 // Os 5 mais recentes do período; fixos que ainda vão vencer ficam de fora.
@@ -607,12 +640,19 @@ $('#cat-conteudo').onclick = (e) => {
   renderResumo();
 };
 $('#evolucao').onclick = (e) => {
+  const abrir = e.target.closest('[data-abrir-mes]');
+  if (abrir) {
+    estado.periodo = 'mes';
+    estado.evoMes = null;
+    if (abrir.dataset.abrirMes === estado.mes) renderTudo();
+    else irParaMes(abrir.dataset.abrirMes);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
   const b = e.target.closest('[data-mes]');
   if (!b) return;
-  estado.periodo = 'mes';
-  if (b.dataset.mes === estado.mes) renderTudo();
-  else irParaMes(b.dataset.mes);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  estado.evoMes = estado.evoMes === b.dataset.mes ? null : b.dataset.mes;
+  renderEvolucao();
 };
 $('#ultimos').onclick = abrirItemDaLista;
 
@@ -620,14 +660,21 @@ function renderLancamentos() {
   if (!estado.user) return;
   const f = estado.filtro;
   const chip = (rot, ativo, attrs) => `<button type="button" class="chip ${ativo ? 'ativo' : ''}" ${attrs}>${rot}</button>`;
-  $('#chips-filtro').innerHTML = (f.categoria ? chip(`${emoji(f.categoria)} ${esc(f.categoria)} ✕`, true, 'data-limpar-cat') : '')
+  // Chips de quem lançou e das categorias que aparecem no mês.
+  const doMes = lancsDoMes(estado.mes).filter(contaNoTotal);
+  const autores = [...new Set(doMes.map(autor).filter(Boolean))].sort();
+  const cats = [...new Set(doMes.map((l) => l.categoria))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  if (f.categoria && !cats.includes(f.categoria)) cats.unshift(f.categoria);
+  $('#chips-filtro').innerHTML = (autores.length > 1 ? autores.map((a) => chip(esc(a), f.autor === a, `data-autor="${esc(a)}"`)).join('') + '<span class="sep"></span>' : '')
+    + cats.map((c) => chip(`${emoji(c)} ${esc(c)}`, f.categoria === c, `data-cat="${esc(c)}"`)).join('')
     + (COM_RECEITAS ? chip('Todos', !f.tipo, 'data-tipo=""') + chip('Gastos', f.tipo === 'gasto', 'data-tipo="gasto"')
       + chip('Receitas', f.tipo === 'receita', 'data-tipo="receita"') + '<span class="sep"></span>' : '')
     + (COM_PESSOAS ? estado.config.pessoas.map((p) => chip(esc(p), f.quem === p, `data-quem="${esc(p)}"`)).join('') : '');
 
   const busca = normal(f.busca);
   const filtrados = lancsDoMes(estado.mes)
-    .filter((l) => contaNoTotal(l) && (!f.tipo || l.tipo === f.tipo) && (!f.categoria || l.categoria === f.categoria) && (!f.quem || l.quem === f.quem))
+    .filter((l) => contaNoTotal(l) && (!f.tipo || l.tipo === f.tipo) && (!f.categoria || l.categoria === f.categoria)
+      && (!f.quem || l.quem === f.quem) && (!f.autor || autor(l) === f.autor))
     .filter((l) => !busca || normal(`${l.descricao} ${l.categoria} ${l.quem}`).includes(busca))
     .sort(ordemRecente);
   const lista = filtrados;
@@ -637,7 +684,7 @@ function renderLancamentos() {
 
   const grupos = {};
   for (const l of lista) (grupos[l.data] ||= []).push(l);
-  const filtrando = f.tipo || f.quem || f.categoria || busca;
+  const filtrando = f.tipo || f.quem || f.autor || f.categoria || busca;
   $('#lista-lanc').innerHTML = Object.entries(grupos).map(([data, itens]) => {
     const g = totais(itens).gastos;
     return `<div class="dia-cab"><span>${rotuloDia(data)}</span>${g ? `<span>${COM_RECEITAS ? '− ' : ''}${brl(g)}</span>` : ''}</div>
@@ -649,7 +696,8 @@ $('#chips-filtro').onclick = (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   const f = estado.filtro;
-  if (b.hasAttribute('data-limpar-cat')) f.categoria = '';
+  if (b.dataset.cat !== undefined) f.categoria = f.categoria === b.dataset.cat ? '' : b.dataset.cat;
+  else if (b.dataset.autor !== undefined) f.autor = f.autor === b.dataset.autor ? '' : b.dataset.autor;
   else if (b.dataset.tipo !== undefined) f.tipo = b.dataset.tipo;
   else if (b.dataset.quem !== undefined) f.quem = f.quem === b.dataset.quem ? '' : b.dataset.quem;
   renderLancamentos();
@@ -693,6 +741,85 @@ function renderFixos() {
 $('#lista-fixos').onclick = (e) => {
   const b = e.target.closest('[data-id]');
   if (b) abrirSheet('fixo', estado.fixos.find((f) => f.id === b.dataset.id));
+};
+
+// ---------- lixeira ----------
+// Apagar move o lançamento para a coleção "lixeira", de onde dá para restaurar por 30 dias.
+const DIAS_LIXEIRA = 30;
+function paraLixeira(itens) {
+  const b = writeBatch(db);
+  for (const { id, ...l } of itens) {
+    b.set(doc(db, 'lixeira', id), { ...l, apagadoEm: serverTimestamp(), apagadoPor: estado.user.email });
+    b.delete(doc(db, 'lancamentos', id));
+  }
+  return b.commit();
+}
+function restaurar(itens) {
+  const b = writeBatch(db);
+  for (const { id, apagadoEm, apagadoPor, ...l } of itens) {
+    b.set(doc(db, 'lancamentos', id), l);
+    b.delete(doc(db, 'lixeira', id));
+  }
+  return b.commit();
+}
+// Hora em que foi apagado (enquanto o servidor não confirma, o Firestore devolve null: conta como agora).
+function apagadoMs(l) { return l.apagadoEm?.seconds ? l.apagadoEm.seconds * 1000 : Date.now(); }
+function esvaziarLixeiraAntiga() {
+  const limite = Date.now() - DIAS_LIXEIRA * 86400000;
+  const velhos = estado.lixeira.filter((l) => apagadoMs(l) < limite);
+  if (!velhos.length) return;
+  const b = writeBatch(db);
+  velhos.forEach((l) => b.delete(doc(db, 'lixeira', l.id)));
+  b.commit().catch(console.error);
+}
+function renderLixeira() {
+  const itens = [...estado.lixeira].sort((a, b) => apagadoMs(b) - apagadoMs(a));
+  $('#lixeira').innerHTML = itens.map((l) => {
+    const dias = Math.max(0, DIAS_LIXEIRA - Math.floor((Date.now() - apagadoMs(l)) / 86400000));
+    return `<li><div class="item">
+      <span class="avatar" style="--c:${corCategoria(l.categoria)}">${emoji(l.categoria)}</span>
+      <span class="info"><span class="titulo">${esc(titulo(l))}</span>
+        <small>${brl(l.valor)} · ${dataCurta(l.data)} · some em ${dias} dia${dias === 1 ? '' : 's'}</small></span>
+      <button class="btn pequeno" data-restaurar="${l.id}">Restaurar</button></div></li>`;
+  }).join('') || '<li class="vazio">A lixeira está vazia.</li>';
+}
+$('#lixeira').onclick = (e) => {
+  const b = e.target.closest('[data-restaurar]');
+  if (!b) return;
+  const item = estado.lixeira.find((l) => l.id === b.dataset.restaurar);
+  if (!item) return;
+  // Parcela volta com as irmãs que também estão na lixeira.
+  const itens = item.parcelaId ? estado.lixeira.filter((l) => l.parcelaId === item.parcelaId) : [item];
+  gravar(restaurar(itens));
+  toast(itens.length > 1 ? `${itens.length} parcelas restauradas` : `${titulo(item)} restaurado`);
+};
+
+// ---------- cópia de segurança ----------
+// CSV com ; e vírgula decimal (o Excel em português abre direto), com BOM para os acentos.
+$('#btn-planilha').onclick = () => {
+  const campo = (v) => {
+    const t = String(v ?? '');
+    return /[;"\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const linhas = [['Data', 'Valor', 'Categoria', 'Descrição', 'Parcela', 'Fixo', 'Lançado por']];
+  [...estado.lancs].filter(contaNoTotal).sort((a, b) => a.data.localeCompare(b.data)).forEach((l) => {
+    linhas.push([
+      `${l.data.slice(8)}/${l.data.slice(5, 7)}/${l.data.slice(0, 4)}`,
+      l.valor.toFixed(2).replace('.', ','),
+      l.categoria, l.descricao || '',
+      l.parcelas > 1 ? `${l.parcela}/${l.parcelas}` : '',
+      l.fixoId ? 'sim' : '',
+      autor(l),
+    ]);
+  });
+  const csv = '\ufeff' + linhas.map((l) => l.map(campo).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `gastos-${hoje()}.csv`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 };
 
 function renderAjustes() {
@@ -927,7 +1054,6 @@ function marcarErro(el) {
 
 $('#btn-excluir').onclick = () => {
   const { modo, item } = edicao;
-  const colecao = modo === 'fixo' ? 'fixos' : 'lancamentos';
   const { id, ...dados } = item;
   sheet.close();
   if (modo === 'fixo') {
@@ -945,10 +1071,10 @@ $('#btn-excluir').onclick = () => {
     });
     return;
   }
-  gravar(deleteDoc(doc(db, colecao, id)));
-  toast('Lançamento excluído', {
+  gravar(paraLixeira([item]));
+  toast('Movido para a lixeira', {
     rotulo: 'Desfazer',
-    fn: () => gravar(setDoc(doc(db, colecao, id), dados)),
+    fn: () => gravar(restaurar([item])),
   });
 };
 
@@ -956,16 +1082,10 @@ $('#btn-excluir-parcelas').onclick = () => {
   const { parcelaId } = edicao.item;
   const todas = estado.lancs.filter((l) => l.parcelaId === parcelaId);
   sheet.close();
-  const b = writeBatch(db);
-  todas.forEach((l) => b.delete(doc(db, 'lancamentos', l.id)));
-  gravar(b.commit());
-  toast(`${todas.length} parcelas excluídas`, {
+  gravar(paraLixeira(todas));
+  toast(`${todas.length} parcelas na lixeira`, {
     rotulo: 'Desfazer',
-    fn: () => {
-      const d = writeBatch(db);
-      todas.forEach(({ id, ...l }) => d.set(doc(db, 'lancamentos', id), l));
-      gravar(d.commit());
-    },
+    fn: () => gravar(restaurar(todas)),
   });
 };
 
@@ -1005,7 +1125,12 @@ form.onsubmit = (e) => {
       // Um lançamento de fixo editado à mão fica marcado para não ser refeito quando o fixo mudar.
       const extra = item.fixoId ? { confirmado: true } : {};
       gravar(updateDoc(doc(db, 'lancamentos', item.id), { ...base, data, mes, ...extra }));
-      toast('Alterações salvas');
+      // Categoria corrigida: o Atalho passa a usar essa categoria para a mesma descrição.
+      const chave = normal(base.descricao);
+      if (chave && base.categoria !== item.categoria) {
+        gravar(setDoc(doc(db, 'config', 'aprendizado'), { mapa: { [chave]: base.categoria } }, { merge: true }));
+        toast(`Salvo. "${base.descricao}" agora vai para ${base.categoria}`);
+      } else toast('Alterações salvas');
     } else if (sel.parcelas > 1) {
       // Uma parcela por mês, no mesmo dia, todas ligadas pelo parcelaId.
       const n = sel.parcelas;

@@ -2,7 +2,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import worker, { segredoWebhook, donoDaChave } from './index.js';
+import worker, { segredoWebhook, donoDaChave, categoriaAprendida, avisoDeLimite } from './index.js';
 import { paraCampos } from './firestore.js';
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -205,8 +205,9 @@ test('Atalho: desfazer apaga só o último da mesma pessoa', async () => {
   await atalho('{"texto":"30 farmácia"}', 'chave-e');
   const r = await atalho('{"texto":"desfazer"}', 'chave-f');
   assert.match(await r.text(), /Apaguei R\$\s10,00/);
-  assert.equal(Object.values(banco).length, 1);
-  assert.equal(Object.values(banco)[0].criadoPor, 'atalho:esposa');
+  const lancs = Object.entries(banco).filter(([c]) => c.startsWith('lancamentos/'));
+  assert.equal(lancs.length, 1);
+  assert.equal(lancs[0][1].criadoPor, 'atalho:esposa');
 });
 
 test('Atalho sem valor explica como usar', async () => {
@@ -273,5 +274,30 @@ test('compra parcelada pelo Atalho: uma parcela por mês e desfazer apaga todas'
   assert.match(texto, /Total de \S+: R\$\s33,34/, 'o mês só soma a 1ª parcela');
   const d = await worker.fetch(new Request('https://bot.example/atalho/chave-f', { method: 'POST', body: 'desfazer' }), env);
   assert.match(await d.text(), /Apaguei R\$\s100,00 em 3x/);
-  assert.equal(Object.keys(banco).length, 0);
+  assert.equal(Object.keys(banco).filter((c) => c.startsWith('lancamentos/')).length, 0);
+  const lixo = Object.entries(banco).filter(([c]) => c.startsWith('lixeira/'));
+  assert.equal(lixo.length, 3, 'as 3 parcelas vão para a lixeira');
+  assert.ok(lixo.every(([, d]) => d.apagadoEm instanceof Date && d.parcelaId && d.apagadoPor === 'atalho:fernando'));
+});
+
+const atalhoTexto = async (texto, chave = 'chave-f') => (await worker.fetch(
+  new Request(`https://bot.example/atalho/${chave}`, { method: 'POST', body: texto }), env)).text();
+
+test('categoria corrigida no app vale para o Atalho', async () => {
+  assert.equal(categoriaAprendida('Marmita do trabalho', { marmita: 'Restaurante' }, ['Restaurante']), 'Restaurante');
+  assert.equal(categoriaAprendida('Marmita', { marmita: 'Apagada' }, ['Restaurante']), null, 'categoria que não existe mais é ignorada');
+  banco['config/aprendizado'] = { mapa: { 'pao de queijo': 'Mercado', xyz: 'Lazer' } };
+  assert.match(await atalhoTexto('12 pão de queijo'), /em Mercado/);
+  assert.match(await atalhoTexto('30 xyz da loja'), /em Lazer/);
+  assert.match(await atalhoTexto('20 uber'), /em Transporte/, 'sem aprendizado, continua pelas palavras-chave');
+});
+
+test('aviso de limite na resposta, a partir de 80%', async () => {
+  assert.equal(avisoDeLimite('Mercado', [{ categoria: 'Mercado', valor: 100 }], 500), '');
+  assert.equal(avisoDeLimite('Mercado', [{ categoria: 'Mercado', valor: 100 }], 0), '');
+  banco['config/orcamentos'] = { limites: { Mercado: 100 } };
+  assert.doesNotMatch(await atalhoTexto('70 mercado'), /limite/);
+  assert.match(await atalhoTexto('15 mercado'), /⚠️ Mercado: faltam R\$\s15,00 para o limite de R\$\s100,00/);
+  assert.match(await atalhoTexto('30 mercado'), /🚨 Mercado passou R\$\s15,00 do limite/);
+  assert.doesNotMatch(await atalhoTexto('500 uber'), /limite/, 'categoria sem limite não avisa');
 });

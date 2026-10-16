@@ -15,3 +15,9 @@ export const EMAILS_PERMITIDOS = [
   'fernandomendoncacintra@gmail.com',
   'gabrielagomesfran@gmail.com',
 ];
+
+// Nome curto de cada um, para mostrar quem lançou e filtrar a lista.
+export const NOMES = {
+  'fernandomendoncacintra@gmail.com': 'Fernando',
+  'gabrielagomesfran@gmail.com': 'Gabi',
+};

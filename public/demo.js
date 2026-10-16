@@ -59,16 +59,19 @@ function mudou() {
     for (const o of ouvintes) o.cb(snap(o.ref));
   });
 }
+const ehMapa = (v) => v && typeof v === 'object' && !Array.isArray(v) && !('seconds' in v);
 function gravar(path, data, merge) {
   const r = merge ? { ...(store.get(path) || {}) } : {};
   for (const [k, v] of Object.entries(data)) {
     if (v?.__union) r[k] = [...new Set([...(r[k] || []), ...v.__union])];
     else if (v?.__remove) r[k] = (r[k] || []).filter((x) => !v.__remove.includes(x));
+    else if (merge === 'fundo' && ehMapa(v) && ehMapa(r[k])) r[k] = { ...r[k], ...v };
     else r[k] = v;
   }
   store.set(path, r);
 }
-export const setDoc = async (ref, data) => { gravar(ref.path, data); mudou(); };
+// setDoc com { merge: true } junta os mapas, como o Firestore.
+export const setDoc = async (ref, data, opts) => { gravar(ref.path, data, opts?.merge ? 'fundo' : false); mudou(); };
 export const updateDoc = async (ref, data) => { gravar(ref.path, data, true); mudou(); };
 export const deleteDoc = async (ref) => { store.delete(ref.path); mudou(); };
 export const addDoc = async (col, data) => {
@@ -116,7 +119,7 @@ for (let k = 5; k >= 0; k--) {
     const dia = Math.max(1, Math.round(((i + 1) / exemplos.length) * ultimo));
     store.set(`lancamentos/x${++n}`, {
       tipo, categoria, descricao, quem, valor: Math.round(valor * fatores[5 - k] * (1 + (i % 3) * 0.07) * 100) / 100,
-      data: `${mes}-${pad(dia)}`, mes, criadoPor: 'demo', criadoEm: { seconds: n },
+      data: `${mes}-${pad(dia)}`, mes, criadoPor: i % 3 ? 'demo' : 'atalho:gabi', criadoEm: { seconds: n },
     });
   });
   if (k > 0) {
