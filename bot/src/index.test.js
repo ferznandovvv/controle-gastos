@@ -301,3 +301,9 @@ test('aviso de limite na resposta, a partir de 80%', async () => {
   assert.match(await atalhoTexto('30 mercado'), /🚨 Mercado passou R\$\s15,00 do limite/);
   assert.doesNotMatch(await atalhoTexto('500 uber'), /limite/, 'categoria sem limite não avisa');
 });
+
+test('aviso de limite vem logo na 2ª linha da resposta', async () => {
+  banco['config/orcamentos'] = { limites: { Lazer: 10 } };
+  const linhas = (await atalhoTexto('50 cinema')).split('\n');
+  assert.match(linhas[1], /🚨 Lazer passou/);
+});

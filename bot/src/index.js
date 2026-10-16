@@ -119,8 +119,9 @@ function criarBot(db, responder) {
     const gastos = await gastosDoMes(mes);
     const total = gastos.reduce((s, d) => s + d.valor, 0);
     const aviso = avisoDeLimite(categoria, gastos, orcamentos.limites?.[categoria]);
-    return responder(`✅ ${valorTxt} em *${categoria}*${extra}${quando}\n${ultima}`
-      + `Total de ${nomeMes(mes)}: ${brl(total)}${aviso ? `\n${aviso}` : ''}\n\nErrou? Mande *desfazer*.`);
+    // O aviso vem logo na 2ª linha: a notificação do iPhone corta o resto.
+    return responder(`✅ ${valorTxt} em *${categoria}*${extra}${quando}\n${aviso ? `${aviso}\n` : ''}${ultima}`
+      + `Total de ${nomeMes(mes)}: ${brl(total)}\n\nErrou? Mande *desfazer*.`);
   }
 
   async function desfazer(autor) {
