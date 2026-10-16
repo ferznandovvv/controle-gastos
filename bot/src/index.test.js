@@ -307,3 +307,12 @@ test('aviso de limite vem logo na 2ª linha da resposta', async () => {
   const linhas = (await atalhoTexto('50 cinema')).split('\n');
   assert.match(linhas[1], /🚨 Lazer passou/);
 });
+
+test('categoria criada pelo nome vence o que foi aprendido antes', async () => {
+  banco['config/geral'] = { catGasto: ['Mercado', 'Restaurante', 'Marmita', 'Outros'] };
+  banco['config/aprendizado'] = { mapa: { marmita: 'Restaurante' } };
+  assert.match(await atalhoTexto('18,99 marmita'), /em Marmita/);
+  assert.match(await atalhoTexto('25 marmita do trabalho'), /em Marmita/);
+  banco['config/aprendizado'] = { mapa: { quentinha: 'Marmita' } };
+  assert.match(await atalhoTexto('20 quentinha'), /em Marmita/, 'aprendido ainda vence a palavra-chave');
+});

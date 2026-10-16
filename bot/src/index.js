@@ -10,7 +10,7 @@
 // O Telegram é avisado do endereço do bot pela publicação (.github/workflows/publicar.yml), com um segredo
 // derivado do token (segredoWebhook) que volta em cada chamada e prova que ela veio do Telegram.
 import { conectar } from './firestore.js';
-import { interpretar, escolherCategoria, observacao, dividirParcelas, dataDaParcela, normal } from './interpretar.js';
+import { interpretar, escolherCategoria, categoriaPeloNome, observacao, dividirParcelas, dataDaParcela, normal } from './interpretar.js';
 
 // Mesma lista padrão do app (public/app.js), usada enquanto ninguém editar as categorias.
 const CAT_PADRAO = ['Mercado', 'Bebê', 'Moradia', 'Contas da casa', 'Transporte', 'Saúde', 'Restaurante', 'Lazer',
@@ -90,7 +90,9 @@ function criarBot(db, responder) {
       ['config/geral', 'config/aprendizado', 'config/orcamentos'].map(async (c) => (await db.ler(c))?.dados || {}),
     );
     const categorias = config.catGasto?.length ? config.catGasto : CAT_PADRAO;
-    const categoria = categoriaAprendida(r.descricao, aprendizado.mapa, categorias)
+    // O nome de uma categoria escrito no texto vence; depois, o que vocês corrigiram no app; por fim, as palavras-chave.
+    const categoria = categoriaPeloNome(r.descricao, categorias)
+      || categoriaAprendida(r.descricao, aprendizado.mapa, categorias)
       || escolherCategoria(r.descricao, categorias);
     const descricao = observacao(r.descricao, categoria);
     const comum = { tipo: 'gasto', categoria, descricao, quem: '', origem, criadoPor: autor };

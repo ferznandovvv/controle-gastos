@@ -39,10 +39,16 @@ function temPalavra(texto, palavra) {
   return new RegExp(`(^|[^a-z0-9])${palavra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^a-z0-9])`).test(texto);
 }
 
+// Categoria cujo nome aparece no texto ("marmita" com a categoria Marmita), ou undefined.
+export function categoriaPeloNome(descricao, categorias) {
+  const texto = normal(descricao);
+  return categorias.find((c) => temPalavra(texto, normal(c)));
+}
+
 // Escolhe a categoria: primeiro pelo nome das categorias cadastradas, depois pelas palavras-chave.
 export function escolherCategoria(descricao, categorias) {
   const texto = normal(descricao);
-  const porNome = categorias.find((c) => temPalavra(texto, normal(c)));
+  const porNome = categoriaPeloNome(descricao, categorias);
   if (porNome) return porNome;
   for (const [chave, palavras] of Object.entries(PALAVRAS)) {
     const cat = categorias.find((c) => normal(c) === chave);
