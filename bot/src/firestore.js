@@ -87,11 +87,11 @@ export function conectar(chaveJson) {
       return d && doc(d);
     },
 
-    // filtros: [['campo', 'EQUAL' | 'IN', valor], ...]
-    async consultar(colecao, filtros) {
+    // filtros: [['campo', 'EQUAL' | 'IN', valor], ...]; sem filtros, a coleção inteira.
+    async consultar(colecao, filtros = []) {
       const f = filtros.map(([campo, op, valor]) => ({ fieldFilter: { field: { fieldPath: campo }, op, value: paraValor(valor) } }));
-      const where = f.length === 1 ? f[0] : { compositeFilter: { op: 'AND', filters: f } };
-      const res = await chamar(':runQuery', { structuredQuery: { from: [{ collectionId: colecao }], where } });
+      const where = f.length > 1 ? { compositeFilter: { op: 'AND', filters: f } } : f[0];
+      const res = await chamar(':runQuery', { structuredQuery: { from: [{ collectionId: colecao }], ...(where && { where }) } });
       return res.filter((r) => r.document).map((r) => doc(r.document));
     },
 

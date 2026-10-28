@@ -1,4 +1,4 @@
-import { firebaseConfig, EMAILS_PERMITIDOS, NOMES } from './firebase-config.js';
+import { firebaseConfig, EMAILS_PERMITIDOS, NOMES, BOT_URL } from './firebase-config.js';
 
 // Página guardada de uma versão anterior com o código novo: recarrega uma vez para pegar a página nova,
 // em vez de deixar botões sem função.
@@ -164,6 +164,7 @@ if (!configurado) {
     }
     estado.user = user;
     mostrarApp();
+    renderNotif();
     iniciarListeners();
   });
 }
@@ -794,6 +795,88 @@ $('#lixeira').onclick = (e) => {
   toast(itens.length > 1 ? `${itens.length} parcelas restauradas` : `${titulo(item)} restaurado`);
 };
 
+// ---------- notificações ----------
+// Cada aparelho que ativa guarda sua inscrição em "inscricoes"; o bot avisa os outros quando alguém lança.
+// No iPhone só funciona com o app aberto pelo ícone da tela de início (iOS 16.4+).
+const pushSuportado = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const instalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const ehIphone = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+async function idInscricao(endpoint) {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint)));
+  return Array.from(h.slice(0, 16), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+function deB64url(s) {
+  return Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+}
+async function salvarInscricao(sub) {
+  const j = sub.toJSON();
+  const email = estado.user.email.toLowerCase();
+  await setDoc(doc(db, 'inscricoes', await idInscricao(j.endpoint)), {
+    endpoint: j.endpoint, keys: j.keys, email, nome: NOMES[email] || email.split('@')[0],
+    aparelho: navigator.userAgent.slice(0, 160), atualizadoEm: serverTimestamp(),
+  });
+}
+let inscricaoConferida = false;
+async function renderNotif() {
+  const status = $('#notif-status');
+  const btn = $('#btn-notif');
+  btn.hidden = true;
+  estado.pushAtivo = false;
+  if (DEMO) { status.textContent = 'Indisponível no modo de demonstração.'; return; }
+  if (!pushSuportado()) {
+    status.textContent = ehIphone() && !instalado()
+      ? 'Para receber avisos no iPhone, abra o app pelo ícone da tela de início (no Safari: Compartilhar → Adicionar à Tela de Início).'
+      : 'Este navegador não recebe notificações.';
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    status.textContent = 'As notificações estão bloqueadas. Libere em Ajustes do iPhone → Notificações → Gastos.';
+    return;
+  }
+  const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+  estado.pushAtivo = !!sub;
+  // Uma vez por abertura, regrava a inscrição (volta se o bot tiver apagado ou se mudou de aparelho).
+  if (sub && !inscricaoConferida) { inscricaoConferida = true; salvarInscricao(sub).catch(console.error); }
+  status.textContent = sub
+    ? 'Ativadas neste aparelho: você recebe um aviso quando a outra pessoa lançar um gasto.'
+    : 'Receba um aviso neste aparelho quando a outra pessoa lançar um gasto.';
+  btn.textContent = sub ? 'Desativar neste aparelho' : 'Ativar notificações';
+  btn.classList.toggle('primario', !sub);
+  btn.hidden = false;
+}
+$('#btn-notif').onclick = async () => {
+  const btn = $('#btn-notif');
+  btn.disabled = true;
+  try {
+    if (estado.pushAtivo) {
+      const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+      if (sub) {
+        await deleteDoc(doc(db, 'inscricoes', await idInscricao(sub.endpoint)));
+        await sub.unsubscribe();
+      }
+      toast('Notificações desativadas neste aparelho');
+    } else {
+      // O pedido de permissão precisa vir direto do toque (o iPhone recusa se vier depois de outra espera).
+      if (await Notification.requestPermission() !== 'granted') return;
+      const chave = await (await fetch(`${BOT_URL}/push/chave`)).text();
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: deB64url(chave.trim()) });
+      await salvarInscricao(sub);
+      toast('Notificações ativadas');
+    }
+  } catch (e) {
+    alert(`Não foi possível mudar as notificações: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    renderNotif();
+  }
+};
+// Pede ao bot para avisar a outra pessoa (ele confere no banco quem lançou e o quê).
+function avisarOutro(id) {
+  if (DEMO) return;
+  fetch(`${BOT_URL}/push/aviso`, { method: 'POST', body: JSON.stringify({ id }) }).catch(() => {});
+}
+
 // ---------- cópia de segurança ----------
 // CSV com ; e vírgula decimal (o Excel em português abre direto), com BOM para os acentos.
 $('#btn-planilha').onclick = () => {
@@ -1143,12 +1226,12 @@ form.onsubmit = (e) => {
           criadoPor: estado.user.email, criadoEm: serverTimestamp(),
         });
       });
-      gravar(b.commit());
+      gravar(b.commit().then(() => avisarOutro(`${parcelaId}_1`)));
       toast(`${brl(base.valor)} em ${n}x lançado`);
     } else {
       gravar(addDoc(collection(db, 'lancamentos'), {
         ...base, data, mes, criadoPor: estado.user.email, criadoEm: serverTimestamp(),
-      }));
+      }).then((ref) => avisarOutro(ref.id)));
       toast(`${nome} de ${brl(base.valor)} adicionad${base.tipo === 'receita' ? 'a' : 'o'}`);
     }
     irParaMes(mes);

@@ -21,3 +21,6 @@ export const NOMES = {
   'fernandomendoncacintra@gmail.com': 'Fernando',
   'gabrielagomesfran@gmail.com': 'Gabi',
 };
+
+// Bot no Cloudflare: Atalho do iPhone e envio das notificações.
+export const BOT_URL = 'https://gastos.fernando-0a9.workers.dev';

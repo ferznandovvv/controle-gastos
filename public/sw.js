@@ -8,6 +8,19 @@ self.addEventListener('activate', (e) => e.waitUntil(
     .then(() => self.clients.claim()),
 ));
 
+// Notificação de lançamento novo, enviada pelo bot ({ titulo, corpo }).
+self.addEventListener('push', (e) => {
+  let m = {};
+  try { m = e.data.json(); } catch { /* sem conteúdo */ }
+  e.waitUntil(self.registration.showNotification(m.titulo || 'Nossos Gastos', { body: m.corpo || '', icon: 'icons/icon.svg' }));
+});
+// Tocar na notificação abre o app (ou traz para frente, se já estiver aberto).
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then((abertas) => (abertas[0] ? abertas[0].focus() : self.clients.openWindow('./'))));
+});
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;

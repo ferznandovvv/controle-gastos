@@ -11,8 +11,9 @@ service cloud.firestore {
         ];
     }
 
-    match /{document=**} {
-      allow read, write: if permitido();
+    // segredos (chave das notificações) e avisos (controle de envio) só o bot acessa.
+    match /{colecao}/{documento=**} {
+      allow read, write: if permitido() && !(colecao in ['segredos', 'avisos']);
     }
   }
 }

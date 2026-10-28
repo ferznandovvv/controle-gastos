@@ -7,9 +7,12 @@
 //                                  endereço ou no cabeçalho Authorization e o nome identifica quem lançou
 //   TELEGRAM_TOKEN                 token do bot, dado pelo @BotFather
 //   TELEGRAM_USUARIOS_PERMITIDOS   IDs do Telegram que podem lançar gastos, separados por vírgula
+// Notificações: /push/chave dá a chave pública para o app se inscrever, e /push/aviso avisa o outro
+// de um lançamento novo (o Atalho avisa sozinho). As inscrições ficam na coleção "inscricoes".
 // O Telegram é avisado do endereço do bot pela publicação (.github/workflows/publicar.yml), com um segredo
 // derivado do token (segredoWebhook) que volta em cada chamada e prova que ela veio do Telegram.
 import { conectar } from './firestore.js';
+import { chavesVapid, enviar } from './push.js';
 import { interpretar, escolherCategoria, categoriaPeloNome, observacao, dividirParcelas, dataDaParcela, normal } from './interpretar.js';
 
 // Mesma lista padrão do app (public/app.js), usada enquanto ninguém editar as categorias.
@@ -68,7 +71,7 @@ export function avisoDeLimite(categoria, gastosDoMes, limite) {
   return '';
 }
 
-function criarBot(db, responder) {
+function criarBot(db, responder, aoLancar = () => {}) {
   // Mesma regra do app (contaNoTotal em public/app.js): lançamento de fixo com data futura não conta.
   async function gastosDoMes(mes) {
     const docs = await db.consultar('lancamentos', [['mes', 'EQUAL', mes]]);
@@ -114,6 +117,7 @@ function criarBot(db, responder) {
       if (e.jaExiste) return; // reenvio da mesma mensagem
       throw e;
     }
+    aoLancar(gravacoes[0].criar.slice('lancamentos/'.length));
     const extra = descricao && normal(descricao) !== normal(categoria) ? ` · ${descricao}` : '';
     const quando = ['', ' (ontem)', ' (anteontem)'][r.diasAtras];
     const valorTxt = n > 1 ? `${brl(r.valor)} em ${n}x de ${brl(valores[n - 1])}` : brl(r.valor);
@@ -168,7 +172,7 @@ function criarBot(db, responder) {
   };
 }
 
-async function telegram(req, env) {
+async function telegram(req, env, ctx) {
   if (!env.TELEGRAM_TOKEN || req.headers.get('x-telegram-bot-api-secret-token') !== await segredoWebhook(env.TELEGRAM_TOKEN)) {
     console.warn('Chamada sem o segredo do Telegram');
     return new Response(null, { status: 401 });
@@ -192,7 +196,8 @@ async function telegram(req, env) {
     } else {
       // O id da mensagem no lançamento evita duplicar quando o Telegram reenvia a mesma atualização.
       const id = `tg_${chat}_${msg.message_id}`.replace(/-/g, 'n');
-      await criarBot(conectar(env.FIREBASE_SERVICE_ACCOUNT), responder)(msg.text, `telegram:${usuario}`, id, 'telegram');
+      const db = conectar(env.FIREBASE_SERVICE_ACCOUNT);
+      await criarBot(db, responder, (lid) => ctx.waitUntil(avisarLancamento(db, lid)))(msg.text, `telegram:${usuario}`, id, 'telegram');
     }
   } catch (e) {
     console.error('Erro ao tratar mensagem', e);
@@ -214,7 +219,7 @@ export function donoDaChave(chaves, autorizacao) {
 // Aceita dois formatos, para o Atalho poder ser montado do jeito mais simples:
 //   GET  /atalho/<chave>?texto=45,90%20mercado
 //   POST /atalho  com "Authorization: Bearer <chave>" e corpo {"texto": "..."} (ou o texto puro)
-async function atalho(req, env, url) {
+async function atalho(req, env, url, ctx) {
   const texto = (msg, status = 200) => new Response(msg, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   const chaveNoCaminho = decodeURIComponent(url.pathname.slice('/atalho/'.length));
   const nome = donoDaChave(env.ATALHO_CHAVES, chaveNoCaminho || req.headers.get('authorization'));
@@ -236,7 +241,8 @@ async function atalho(req, env, url) {
   console.log('Atalho recebido', nome);
   const respostas = [];
   try {
-    await criarBot(conectar(env.FIREBASE_SERVICE_ACCOUNT), (r) => respostas.push(r))(
+    const db = conectar(env.FIREBASE_SERVICE_ACCOUNT);
+    await criarBot(db, (r) => respostas.push(r), (lid) => ctx.waitUntil(avisarLancamento(db, lid)))(
       mensagem, `atalho:${nome}`, `at_${crypto.randomUUID()}`, 'atalho');
   } catch (e) {
     console.error('Erro ao tratar atalho', e);
@@ -246,14 +252,79 @@ async function atalho(req, env, url) {
   return texto(respostas.join('\n\n').replace(/\*/g, '').replace('Errou? Mande desfazer.', 'Errou? Lance "desfazer".'));
 }
 
+// ---------- notificações ----------
+const CONTATO_PUSH = 'mailto:fernandomendoncacintra@gmail.com';
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type' };
+const mesmaPessoa = (a, b) => normal(a).slice(0, 3) === normal(b).slice(0, 3);
+
+// Avisa os outros aparelhos inscritos de um lançamento novo. Só uma vez por lançamento (avisos/<id>),
+// só lançamentos recentes e nunca fixos; quem lançou não recebe o próprio aviso.
+export async function avisarLancamento(db, id) {
+  try {
+    const lanc = await db.ler(`lancamentos/${id}`);
+    const l = lanc?.dados;
+    if (!l || l.fixoId || !(Date.now() - (l.criadoEm?.getTime() || 0) < 10 * 60000)) return 0;
+    try {
+      await db.gravar([{ criar: `avisos/${id}`, dados: {}, agoraEm: 'em' }]);
+    } catch (e) {
+      if (e.jaExiste) return 0;
+      throw e;
+    }
+    const inscricoes = await db.consultar('inscricoes');
+    const autor = String(l.criadoPor || '').toLowerCase();
+    const ehDoAutor = (i) => (autor.includes('@') ? i.dados.email === autor : mesmaPessoa(i.dados.nome || '', autor.split(':')[1] || ''));
+    const doAutor = inscricoes.find(ehDoAutor);
+    const nome = doAutor?.dados.nome || (autor.includes('@') ? autor.split('@')[0] : autor.split(':')[1] || 'Alguém');
+    let valor = brl(l.valor);
+    if (l.parcelas > 1) {
+      const grupo = await db.consultar('lancamentos', [['parcelaId', 'EQUAL', l.parcelaId]]);
+      valor = `${brl(grupo.reduce((s, d) => s + d.dados.valor, 0))} em ${l.parcelas}x`;
+    }
+    const mensagem = {
+      titulo: `${nome[0].toUpperCase()}${nome.slice(1)} lançou ${valor}`,
+      corpo: `${l.categoria}${l.descricao && normal(l.descricao) !== normal(l.categoria) ? ` · ${l.descricao}` : ''}`,
+    };
+    const destinos = inscricoes.filter((i) => !ehDoAutor(i));
+    if (!destinos.length) return 0;
+    const chaves = await chavesVapid(db);
+    const status = await Promise.all(destinos.map((i) => enviar(i.dados, mensagem, chaves, CONTATO_PUSH).catch((e) => {
+      console.error('Falha ao enviar push', e);
+      return 0;
+    })));
+    // Inscrição que o serviço não reconhece mais (app reinstalado, permissão tirada): apaga.
+    const mortas = destinos.filter((_, k) => status[k] === 404 || status[k] === 410);
+    if (mortas.length) await db.gravar(mortas.map((i) => ({ apagar: i.caminho })));
+    return status.filter((s) => s >= 200 && s < 300).length;
+  } catch (e) {
+    console.error('Erro ao avisar lançamento', id, e);
+    return 0;
+  }
+}
+
+async function push(req, env, url, ctx) {
+  const resp = (corpo, status = 200) => new Response(corpo, { status, headers: { ...CORS, 'Content-Type': 'text/plain; charset=utf-8' } });
+  if (req.method === 'OPTIONS') return resp(null, 204);
+  const db = conectar(env.FIREBASE_SERVICE_ACCOUNT);
+  if (url.pathname === '/push/chave' && req.method === 'GET') return resp((await chavesVapid(db)).publica);
+  if (url.pathname === '/push/aviso' && req.method === 'POST') {
+    let id = '';
+    try { id = String(JSON.parse(await req.text()).id || ''); } catch { /* corpo inválido */ }
+    if (!/^[\w.-]{1,120}$/.test(id)) return resp('id inválido', 400);
+    ctx.waitUntil(avisarLancamento(db, id));
+    return resp('ok', 202);
+  }
+  return resp(null, 404);
+}
+
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
+    if (url.pathname.startsWith('/push/')) return push(req, env, url, ctx);
     if (url.pathname === '/atalho' || url.pathname.startsWith('/atalho/')) {
-      return ['GET', 'POST'].includes(req.method) ? atalho(req, env, url) : new Response(null, { status: 405 });
+      return ['GET', 'POST'].includes(req.method) ? atalho(req, env, url, ctx) : new Response(null, { status: 405 });
     }
     if (req.method === 'GET') return new Response('Bot de gastos no ar.');
     if (req.method !== 'POST') return new Response(null, { status: 405 });
-    return telegram(req, env);
+    return telegram(req, env, ctx);
   },
 };
